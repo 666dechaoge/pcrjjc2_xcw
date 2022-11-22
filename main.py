@@ -103,9 +103,9 @@ def get_query_uid(ev):
         user_id = str(ev['user_id'])
         print(f"查询自己{user_id}")
     # 群友代查功能，可选
-    elif ev.message[0].type == 'at' and ev.message[0].data['qq'] != 'all':
-        user_id = str(ev.message[0].data['qq'])
-        print(f"代查他人{user_id}")
+    # elif ev.message[0].type == 'at' and ev.message[0].data['qq'] != 'all':
+    #     user_id = str(ev.message[0].data['qq'])
+    #     print(f"代查他人{user_id}")
     else:
         user_id = str(ev['user_id'])
     return user_id
@@ -333,7 +333,7 @@ async def bind_get(game_id, setting_item_key):
 
 
 # 竞技场订阅删除
-@sv.on_prefix('删除竞技场订阅','删除竞技场绑定')
+@sv.on_prefix('删除竞技场订阅', '删除竞技场绑定')
 async def delete_arena_sub(bot, ev):
     gid = ev.group_id
     uid = ev.user_id
@@ -346,7 +346,7 @@ async def delete_arena_sub(bot, ev):
     del id_user_tmp[key]
     delete_game_bind(game_id)
     await bot.send(ev, f'删除竞技场订阅{game_id}成功', at_sender=True)
-    await send_to_admin(f'群:{gid}的QQ:{uid}竞技场推送订阅{game_id}被删除了')
+    # await send_to_admin(f'群:{gid}的QQ:{uid}竞技场推送订阅{game_id}被删除了')
 
 
 @sv.on_prefix('删除我的竞技场订阅')
@@ -364,7 +364,7 @@ async def delete_arena_sub(bot, ev):
         else:
             del id_user_tmp[key]
         await bot.send(ev, '删除全部竞技场订阅成功', at_sender=True)
-        await send_to_admin(f'群:{gid}的QQ:{uid}竞技场推送订阅全部被删除了')
+        # await send_to_admin(f'群:{gid}的QQ:{uid}竞技场推送订阅全部被删除了')
 
 
 # 竞技场订阅调整
@@ -673,6 +673,54 @@ async def compare(resall, no, bind_info):
         sv.logger.error(f'对{game_id}的检查出错:{e}')
 
 
+# 被踢或者退群自动删除相关订阅
+@sv.on_notice('group_decrease.leave', 'group_decrease.kick', 'group_decrease.kick_me')
+async def leave_notice(session: NoticeSession):
+    # uid是被踢的人qq号
+    uid = str(session.ctx['user_id'])
+    gid = str(session.ctx['group_id'])
+    sid = str(session.ctx['self_id'])
+
+    # bot被踢
+    if uid == sid:
+        delete_group_bind(gid)
+        await send_to_admin(f'bot退群或被踢，QQ群:{gid}的竞技场推送订阅现已都被删除了')
+    else:
+        binds = JJCB.select_by_user_id(uid)
+        if not binds:
+            return
+        for bind in binds:
+            if bind['group_id'] == gid:
+                delete_game_bind(bind['game_id'])
+        # await send_to_admin(f'QQ:{uid}在群:{gid}的竞技场推送订阅被删除了')
+
+
+# 清理无效用户配置
+@sv.on_fullmatch('jjc无效清理')
+async def clean_sub_invalid(bot, ev):
+    is_su = priv.check_priv(ev, priv.SUPERUSER)
+    egl = sv.enable_group
+    gl = await bot.get_group_list()
+    gl_ids = set()
+    for g in gl:
+        gl_ids.add(g['group_id'])
+    if not is_su:
+        msg = '需要超级用户权限'
+    else:
+        n = 0
+        msg_list = []
+        group_list = JJCB.select_group()
+        for result in group_list:
+            gid = result['group_id']
+            a = int(gid) not in egl
+            b = int(gid) not in gl_ids
+            if a or b:
+                n = n + 1
+                delete_group_bind(gid)
+                msg_list.append(f'{gid} ')
+        msg = ''.join(msg_list) + f"\n清理完毕，清理了{n}个失效群的订阅"
+    await bot.send(ev, msg)
+
 # 相关信息统计
 @sv.on_fullmatch('jjc状态统计')
 async def send_sub_group(bot, ev):
@@ -734,150 +782,101 @@ async def send_sub_config(bot, ev):
                 n = n + 1
             except Exception as e:
                 sv.logger.error(e)
-        msg = f"{''.join(group_msg)}共{n}个群，{len(JJCB.bind_cache)}个订阅，预计查询用时{0.3 * len(JJCB.bind_cache):.2f}秒"
+        msg = f"{''.join(group_msg)}共{n}个群，{len(JJCB.bind_cache)}个订阅"
     await bot.send(ev, msg)
 
 
-@sv.on_prefix('jjc用户统计')
-async def send_sub_user(bot, ev):
-    is_su = priv.check_priv(ev, priv.SUPERUSER)
-    group_id = str(ev.message[0]) if str(ev.message[0]) else ev.group_id
-    if not is_su:
-        msg = '需要超级用户权限'
-    else:
-        bind_list = JJCB.select_by_group_id(group_id)
-        if not bind_list:
-            msg = '该群无人订阅'
-        else:
-            msg_list = []
-            bind_lite = {}
-            for bind in bind_list:
-                uid = bind['user_id']
-                bind_lite.setdefault(uid, {
-                    'user_id': uid,
-                    'game_ids': []
-                })['game_ids'].append(bind['game_id'])
-            sorted_list = list(bind_lite.values())
-            try:
-                group = await get_bot().get_group_info(group_id=group_id)
-                group_name = str(group['group_name'])
-                for user_bind in sorted_list:
-                    user = await bot.get_group_member_info(group_id=group_id, user_id=user_bind["user_id"])
-                    user_name = user['card'] if user['card'] != '' else user['nickname']
-                    msg_list.append(f"{user_bind['user_id']} {user_name} {len(user_bind['game_ids'])}个订阅\n")
-                group_msg = f'查询完毕，{group_id}【{group_name}】，有{len(sorted_list)}个用户'
-                msg = ''.join(msg_list) + group_msg
-            except:
-                await bot.send(ev, f'群{group_id}状态异常')
-                return
-    await bot.send(ev, msg)
+# @sv.on_prefix('jjc用户统计')
+# async def send_sub_user(bot, ev):
+#     is_su = priv.check_priv(ev, priv.SUPERUSER)
+#     group_id = str(ev.message[0]) if str(ev.message[0]) else ev.group_id
+#     if not is_su:
+#         msg = '需要超级用户权限'
+#     else:
+#         bind_list = JJCB.select_by_group_id(group_id)
+#         if not bind_list:
+#             msg = '该群无人订阅'
+#         else:
+#             msg_list = []
+#             bind_lite = {}
+#             for bind in bind_list:
+#                 uid = bind['user_id']
+#                 bind_lite.setdefault(uid, {
+#                     'user_id': uid,
+#                     'game_ids': []
+#                 })['game_ids'].append(bind['game_id'])
+#             sorted_list = list(bind_lite.values())
+#             try:
+#                 group = await get_bot().get_group_info(group_id=group_id)
+#                 group_name = str(group['group_name'])
+#                 for user_bind in sorted_list:
+#                     user = await bot.get_group_member_info(group_id=group_id, user_id=user_bind["user_id"])
+#                     user_name = user['card'] if user['card'] != '' else user['nickname']
+#                     msg_list.append(f"{user_bind['user_id']} {user_name} {len(user_bind['game_ids'])}个订阅\n")
+#                 group_msg = f'查询完毕，{group_id}【{group_name}】，有{len(sorted_list)}个用户'
+#                 msg = ''.join(msg_list) + group_msg
+#             except:
+#                 await bot.send(ev, f'群{group_id}状态异常')
+#                 return
+#     await bot.send(ev, msg)
 
 
-# 被踢或者退群自动删除相关订阅
-@sv.on_notice('group_decrease.leave', 'group_decrease.kick', 'group_decrease.kick_me')
-async def leave_notice(session: NoticeSession):
-    # uid是被踢的人qq号
-    uid = str(session.ctx['user_id'])
-    gid = str(session.ctx['group_id'])
-    sid = str(session.ctx['self_id'])
-
-    # bot被踢
-    if uid == sid:
-        delete_group_bind(gid)
-        await send_to_admin(f'bot退群或被踢，QQ群:{gid}的竞技场推送订阅现已都被删除了')
-    else:
-        binds = JJCB.select_by_user_id(uid)
-        if not binds:
-            return
-        for bind in binds:
-            if bind['group_id'] == gid:
-                delete_game_bind(bind['game_id'])
-        await send_to_admin(f'QQ:{uid}在群:{gid}的竞技场推送订阅被删除了')
-
-
-# 清理无效用户配置
-@sv.on_fullmatch('jjc无效清理')
-async def clean_sub_invalid(bot, ev):
-    is_su = priv.check_priv(ev, priv.SUPERUSER)
-    egl = sv.enable_group
-    gl = await bot.get_group_list()
-    gl_ids = set()
-    for g in gl:
-        gl_ids.add(g['group_id'])
-    if not is_su:
-        msg = '需要超级用户权限'
-    else:
-        n = 0
-        msg_list = []
-        group_list = JJCB.select_group()
-        for result in group_list:
-            gid = result['group_id']
-            a = int(gid) not in egl
-            b = int(gid) not in gl_ids
-            if a or b:
-                n = n + 1
-                delete_group_bind(gid)
-                msg_list.append(f'{gid} ')
-        msg = ''.join(msg_list) + f"\n清理完毕，清理了{n}个失效群的订阅"
-    await bot.send(ev, msg)
-
-
-# 清理非活跃用户配置
-@sv.on_prefix('jjc非活跃清理')
-async def clean_sub_inactive(bot, ev):
-    is_su = priv.check_priv(ev, priv.SUPERUSER)
-    if not is_su:
-        msg = '需要超级用户权限'
-        await bot.finish(ev, msg)
-    else:
-        try:
-            limit_rank = int(str(ev.message[0]))
-            if limit_rank < 50:
-                await bot.send(ev, "名次至少要大于等于50")
-                return
-        except Exception as e:
-            sv.logger.error(e)
-            await bot.send(ev, '名次输入有误')
-            return
-        # n = 0
-        if get_avali():
-            await bot.send(ev, f'开始查询并清理双场名次大于{limit_rank}的用户')
-            JJCB.refresh()
-            bind_cache = deepcopy(JJCB.bind_cache)
-            for game_bind in bind_cache:
-                info = bind_cache[game_bind]
-                pro_entity = PriorityEntry(5, (
-                    nonac_clean, {"game_id": game_bind, "bind_info": info, "limit_rank": limit_rank}))
-                await pro_queue.put(pro_entity)
-        else:
-            await not_avail(bot, ev)
-
-
-async def nonac_clean(resall, info, limit_rank):
-    game_id = info['game_id']
-    group_id = info['group_id']
-    user_id = info['user_id']
-    try:
-        # resall = await queryall(game_id)
-        res = resall['user_info']
-        res = (
-            res['arena_rank'], res['grand_arena_rank'], res['last_login_time'], res['user_name'],
-            res['viewer_id'])
-        if res[0] > limit_rank and res[1] > limit_rank:
-            delete_game_bind(game_id)
-            await send_to_admin(f'群:{group_id}的QQ:{user_id}竞技场推送订阅{game_id}被删除了')
-            await bot.send_group_msg(group_id=int(group_id),
-                                     message=f'[CQ:at,qq={user_id}],您绑定的昵称为{res[3]}账号的双场排名均大于{limit_rank},已删除您的订阅')
-            # n = n + 1
-    except CQHttpError as c:
-        sv.logger.error(c)
-        try:
-            user_name = await get_user_name(user_id, group_id)
-            group_name = await get_group_name(group_id)
-            sv.logger.error(
-                f'群:{group_id} {group_name}的{user_id} {user_name}竞技场清理推送错误{c}')
-            await send_to_admin(f'{group_id} {group_name}的{user_id} {user_name}竞技场清理推送错误{c}')
-        except Exception as e:
-            sv.logger.critical(f'向管理员进行竞技场清理错误报告时发生错误：{type(e)}')
-    except Exception as e:
-        sv.logger.error(f'对{info["id"]}的检查出错:{e}')
+# 以排名为标准清理用户
+# @sv.on_prefix('jjc非活跃清理')
+# async def clean_sub_inactive(bot, ev):
+#     is_su = priv.check_priv(ev, priv.SUPERUSER)
+#     if not is_su:
+#         msg = '需要超级用户权限'
+#         await bot.finish(ev, msg)
+#     else:
+#         try:
+#             limit_rank = int(str(ev.message[0]))
+#             if limit_rank < 50:
+#                 await bot.send(ev, "名次至少要大于等于50")
+#                 return
+#         except Exception as e:
+#             sv.logger.error(e)
+#             await bot.send(ev, '名次输入有误')
+#             return
+#         # n = 0
+#         if get_avali():
+#             await bot.send(ev, f'开始查询并清理双场名次大于{limit_rank}的用户')
+#             JJCB.refresh()
+#             bind_cache = deepcopy(JJCB.bind_cache)
+#             for game_bind in bind_cache:
+#                 info = bind_cache[game_bind]
+#                 pro_entity = PriorityEntry(5, (
+#                     nonac_clean, {"game_id": game_bind, "bind_info": info, "limit_rank": limit_rank}))
+#                 await pro_queue.put(pro_entity)
+#         else:
+#             await not_avail(bot, ev)
+#
+#
+# async def nonac_clean(resall, info, limit_rank):
+#     game_id = info['game_id']
+#     group_id = info['group_id']
+#     user_id = info['user_id']
+#     try:
+#         # resall = await queryall(game_id)
+#         res = resall['user_info']
+#         res = (
+#             res['arena_rank'], res['grand_arena_rank'], res['last_login_time'], res['user_name'],
+#             res['viewer_id'])
+#         if res[0] > limit_rank and res[1] > limit_rank:
+#             delete_game_bind(game_id)
+#             await send_to_admin(f'群:{group_id}的QQ:{user_id}竞技场推送订阅{game_id}被删除了')
+#             await bot.send_group_msg(group_id=int(group_id),
+#                                      message=f'[CQ:at,qq={user_id}],您绑定的昵称为{res[3]}账号的双场排名均大于{limit_rank},已删除您的订阅')
+#             # n = n + 1
+#     except CQHttpError as c:
+#         sv.logger.error(c)
+#         try:
+#             user_name = await get_user_name(user_id, group_id)
+#             group_name = await get_group_name(group_id)
+#             sv.logger.error(
+#                 f'群:{group_id} {group_name}的{user_id} {user_name}竞技场清理推送错误{c}')
+#             await send_to_admin(f'{group_id} {group_name}的{user_id} {user_name}竞技场清理推送错误{c}')
+#         except Exception as e:
+#             sv.logger.critical(f'向管理员进行竞技场清理错误报告时发生错误：{type(e)}')
+#     except Exception as e:
+#         sv.logger.error(f'对{info["id"]}的检查出错:{e}')
