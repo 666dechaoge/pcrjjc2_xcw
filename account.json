@@ -1,0 +1,14 @@
+[
+    {
+        "account": "account1",
+        "password": "password",
+        "platform": 2,
+        "channel": 1
+    },
+    {
+        "account": "account2",
+        "password": "password",
+        "platform": 2,
+        "channel": 1
+    }
+]

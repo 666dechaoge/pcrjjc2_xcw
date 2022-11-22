@@ -1,0 +1,46 @@
+'''
+公版订阅json转存到sqlite数据库中，运行一次即可，失败的订阅会转存到fail.json新文件中
+'''
+import os
+from json import load, dump
+from os.path import dirname, join, exists
+from jjcbinds import JJCBindsStorage
+
+JJCB = JJCBindsStorage()
+
+curpath = dirname(__file__)
+config = join(curpath, 'binds.json')
+if exists(config):
+    with open(config) as fp:
+        root = load(fp)
+else:
+    root = {
+        'arena_bind': {}
+    }
+binds = root['arena_bind']
+
+fail_path = os.path.join(curpath, "fail.json")
+failure = {
+    'arena_bind': {}
+}
+f_binds = failure['arena_bind']
+if not os.path.exists(fail_path):
+    with open(fail_path, "w") as f:
+        f.write("{}")
+
+n = 0
+for user in binds:
+    bind = binds[user]
+    sql = '''INSERT INTO JJCBinds (GAME_ID, USER_ID, GROUP_ID, ARENA, GRAND_ARENA) VALUES (?,?,?,?,?)'''
+    try:
+        JJCB._execute(sql, bind['id'], bind['uid'], bind['gid'],
+                      1 if bind['arena_on'] else 0,
+                      1 if bind['grand_arena_on'] else 0)
+        n = n + 1
+    except:
+        f_binds[user] = binds[user]
+        print(f"{bind['id']}添加异常，可能是ID重复")
+
+with open(fail_path, "w") as f:
+    dump(failure, f, indent=4)
+print(f"成功添加了{n}个用户订阅，失败的已转存fail.json")
