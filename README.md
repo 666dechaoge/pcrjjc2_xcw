@@ -10,9 +10,9 @@
 
 ## 配置方法
 
-按照模板更改account.json内的account和password为bilibili账号的用户名和密码（仅1个账号也可），管理账号与接收验证码的人员取自bot的主人。 
+下载release的压缩包并按照说明放在指定文件夹，更改account.json内的account和password为bilibili账号的用户名和密码（仅1个账号也可），管理账号与接收验证码的人员取自bot的主人。 
 
-魔改版本用户订阅使用sqlite存储，可将目录下的jjcconvert.back改为jjcconvert.py执行，尝试将公版json绑定信息添加回来。
+魔改版本用户订阅使用sqlite存储，可将目录下的jjcconvert.back改为jjcconvert.py执行，尝试将公版json绑定信息导入。
 
 ## 订阅指令
 
