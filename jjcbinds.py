@@ -31,12 +31,13 @@ class JJCBindsStorage:
                      NOTIFY_TYPE INT NOT NULL DEFAULT 1, /* 通知类型 仅下降1，全部0*/
                      ALL_DAY INT NOT NULL DEFAULT 1, /* 通知时间范围 全天 1,下午13:00-16:00 0*/
                      LOGIN_NOTICE INT NOT NULL DEFAULT 0, /* 登录提醒 */
-                     NOTICE_INTERVAL INT NOT NULL DEFAULT 30/* 提醒时间间隔 */
+                     NOTICE_INTERVAL INT NOT NULL DEFAULT 30,/* 提醒时间间隔 */
+                     NOTICE_RANK INT NOT NULL DEFAULT 15001 /* 指定排名以内提醒 */
                       )
                     '''
                                         )
             except Exception as e:
-                raise Exception('创建JJCHistory表失败')
+                raise Exception(f'创建JJCHistory表失败{e}')
             finally:
                 self._connect().close()
 
@@ -49,7 +50,7 @@ class JJCBindsStorage:
                              , (game_id, user_id, group_id))
                 conn.commit()
             except Exception as e:
-                raise Exception('新增记录异常')
+                raise Exception(f'新增记录异常{e}')
             finally:
                 conn.close()
 
@@ -58,17 +59,17 @@ class JJCBindsStorage:
             conn = self._connect()
             try:
                 conn.execute('''UPDATE JJCbinds SET USER_ID = ?,GROUP_ID=?, ARENA=?,GRAND_ARENA=?,
-                NOTIFY_CHANNEL=?,NOTIFY_TYPE=?,ALL_DAY=?,LOGIN_NOTICE=?,NOTICE_INTERVAL=?
+                NOTIFY_CHANNEL=?,NOTIFY_TYPE=?,ALL_DAY=?,LOGIN_NOTICE=?,NOTICE_INTERVAL=?,NOTICE_RANK=?
                 WHERE GAME_ID = ?
                 ''', (
                     bind['user_id'], bind['group_id'], bind['arena'], bind['grand_arena'], bind['notify_channel'],
                     bind['notify_type'],
-                    bind['all_day'], bind['login_notice'], bind['notice_interval'], bind['game_id']
+                    bind['all_day'], bind['login_notice'], bind['notice_interval'], bind['notice_rank'], bind['game_id']
                 )
                              )
                 conn.commit()
             except Exception as e:
-                raise Exception('更新记录异常')
+                raise Exception(f'更新记录异常{e}')
             finally:
                 conn.close()
 
@@ -94,7 +95,7 @@ class JJCBindsStorage:
                     binds.append(row)
                 return binds
             except Exception as e:
-                raise Exception('查询记录异常')
+                raise Exception(f'查询记录异常{e}')
             finally:
                 conn.close()
 
@@ -121,7 +122,7 @@ class JJCBindsStorage:
                 conn.execute(sql, args)
                 conn.commit()
             except Exception as e:
-                raise Exception('移除记录异常')
+                raise Exception(f'移除记录异常{e}')
             finally:
                 conn.close()
 
@@ -150,7 +151,7 @@ class JJCBindsStorage:
                 conn.execute(sql, args)
                 conn.commit()
             except Exception as e:
-                raise Exception(f'{sql}操作记录异常')
+                raise Exception(f'{sql}操作记录异常{e}')
             finally:
                 conn.close()
 

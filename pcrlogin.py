@@ -1,15 +1,18 @@
 import asyncio
 import hoshino
 from os.path import dirname, join
-from hoshino.aiorequests import get
-from hoshino.typing import CQHttpError
+from .aiorequests import get
+# from hoshino.typing import CQHttpError
 from nonebot import get_bot, on_command
 from json import load, loads
 from asyncio import Lock
-from .pcrclient import pcrclient, bsdkclient
+from .pcrclient import pcrclient, bsdkclient, ApiException
 from .service import sv
+from .jjcbinds import JJCBindsStorage
+from .util import send_to_admin, send_to_group
 
 bot = get_bot()
+JJCB = JJCBindsStorage()
 curpath = dirname(__file__)
 try:
     with open(join(curpath, 'account.json')) as fp:
@@ -61,24 +64,21 @@ class Login:
                 userid = args[2]
                 url = f"https://help.tencentbot.top/geetest/?captcha_type=1&challenge={challenge}&gt={gt}&userid={userid}&gs=1 "
                 try:
-                    await bot.send_private_msg(
-                        user_id=admin,
-                        message=f'pcr账号登录需要验证码，请完成以下链接中的验证内容后将第1个方框的内容点击复制，并加上"pcrval {self.no} "前缀发送(空格必须)给机器人完成验证\n'
-                                f'验证链接：{url}\n示例：pcrval {self.no} 123456789\n您也可以发送 pcrval {self.no} auto 命令bot自动过验证码'
-                    )
-                except CQHttpError as e:
+                    await send_to_admin(
+                        f'pcr账号登录需要验证码，请完成以下链接中的验证内容后将第1个方框的内容点击复制，并加上"pcrval {self.no} "前缀发送(空格必须)给机器人完成验证\n'
+                        f'验证链接：{url}\n示例：pcrval {self.no} 123456789\n您也可以发送 pcrval {self.no} auto 命令bot自动过验证码')
+                except Exception as e:
                     sv.logger.critical(f'发送pcr登录验证码链接至管理员失败:{type(e)}')
                 gl = sv.enable_group
                 for g in gl:
                     await asyncio.sleep(0.5)
                     try:
-                        await bot.send_group_msg(group_id=g, message="bot的PCR账号登录需要验证码，请联系管理员解决")
+                        await send_to_group(group_id=g, message="bot的PCR账号登录需要验证码，请联系管理员解决")
                         sv.logger.info(f'群{g} 投递bot异常成功')
-                    except CQHttpError as e:
+                    except Exception as e:
                         sv.logger.error(f'群{g} 投递bot异常失败：{type(e)}')
                         try:
-                            await bot.send_private_msg(user_id=hoshino.config.SUPERUSERS[0],
-                                                       message=f'群{g} 投递bot异常失败：{type(e)}')
+                            await send_to_admin(f'群{g} 投递bot异常失败：{type(e)}')
                         except Exception as e:
                             sv.logger.critical(f'向管理员进行错误回报时发生错误：{type(e)}')
                 await self.captcha_lck.acquire()
@@ -121,10 +121,9 @@ class Login:
 
         if self.captcha_cnt >= 5:
             self.otto = False
-            await bot.send_private_msg(user_id=admin,
-                                       message=f'客户端{self.no}自动过码多次尝试失败，可能为服务器错误，自动切换为手动。\n'
-                                               f'确实服务器无误后，可发送 pcrval {self.no} auto重新触发自动过码。')
-            await bot.send_private_msg(user_id=admin, message=f'客户端{self.no}切换至手动')
+            await send_to_admin(f'客户端{self.no}自动过码多次尝试失败，可能为服务器错误，自动切换为手动。\n'
+                                f'确实服务器无误后，可发送 pcrval {self.no} auto重新触发自动过码。')
+            await send_to_admin(f'客户端{self.no}切换至手动')
             self.validating = False
             return "manual"
 
@@ -136,12 +135,9 @@ class Login:
         # if msg == 'geetest or captcha succeed':
         #     msg = "登录成功"
         try:
-            await bot.send_private_msg(
-                user_id=admin,
-                message=f'pcrjjc2登录结果：{msg}'
-            )
-        except CQHttpError as e:
-            sv.logger.critical(f'发送pcr账号登录失败信息至管理员失败:{type(e)}')
+            await send_to_admin(message=f'pcrjjc2登录结果：{msg}')
+        except:
+            sv.logger.critical(f'发送pcr账号登录失败信息至管理员失败')
 
     # 查询玩家信息以及竞技场信息方法
     async def query(self):
@@ -170,6 +166,13 @@ class Login:
                 resall = (await self.client.callapi('/profile/get_profile', {
                     'target_viewer_id': int(game_id)
                 }))
+            except ApiException as e:
+                sv.logger.error(f'对{game_id}的检查出错{e}')
+                if e.code == 6:
+                    JJCB.remove_by_game_id(game_id)
+                    sv.logger.critical(f'已经自动删除错误的订阅{game_id}')
+                self.avail = False
+                continue
             except Exception as e:
                 sv.logger.error(f'对{game_id}的检查出错{e}')
                 self.avail = False
@@ -180,19 +183,10 @@ class Login:
                 await method(resall, self.no, values['ev'])
             elif method_name == 'compare':
                 await method(resall, self.no, values['bind_info'])
-            elif method_name == 'nonac_clean':
-                await method(resall, values['bind_info'], values['limit_rank'])
             else:
                 continue
 
     async def login(self):
-        async def report_task(login_exceptions):
-            report_exceptions = asyncio.gather(
-                bot.send_private_msg(user_id=admin,
-                                     message=f'客户端{self.no}出错{str(login_exceptions)}超过5次,'
-                                             f'可能为网络错误，确认网络正常后,发送pcrlogin {self.no}重试'),
-                return_exceptions=True)
-            return report_exceptions
 
         exceptions = [None]
         while True:
@@ -207,11 +201,20 @@ class Login:
                 else:
                     self.login_cnt += 1
                     sv.logger.critical(f'客户端{self.no}出错{str(exceptions)}第{self.login_cnt}次，等待5秒重连')
+                    try:
+                        if exceptions[0].code == 0:
+                            sv.logger.info(f'客户端{self.no}更新版本号')
+                            self.client.update_version()
+                    except:
+                        pass
                     await asyncio.sleep(5)
 
             # 5次登录出错不再自动重试，报告admin
             if self.login_cnt >= 5:
-                rep_exc = await report_task(exceptions)
+                rep_exc = await asyncio.gather(
+                    send_to_admin(message=f'客户端{self.no}出错{str(exceptions)}超过5次,'
+                                          f'可能为网络错误，确认网络正常后,发送pcrlogin {self.no}重试'),
+                    return_exceptions=True)
                 if rep_exc != [None]:
                     sv.logger.critical(f'向管理员报告客户端{self.no}失败信息出错{str(rep_exc)}')
                 await self.login_lock.acquire()
@@ -257,15 +260,16 @@ def get_avali():
 async def validate(session):
     if session.ctx['user_id'] == admin:
         client_no = session.ctx['message'].extract_plain_text().replace(f"pcrlogin", "").strip()
+        sid = session.ctx['self_id']
         try:
             inst = inst_list[int(client_no)]
             try:
                 inst.login_lock.release()
-                await bot.send_private_msg(user_id=admin, message=f'客户端{client_no}再次尝试登录')
+                await bot.send_private_msg(self_id=sid, user_id=admin, message=f'客户端{client_no}再次尝试登录')
             except:
-                await bot.send_private_msg(user_id=admin, message=f'客户端{client_no}已经登录')
+                await bot.send_private_msg(self_id=sid, user_id=admin, message=f'客户端{client_no}已经登录')
         except:
-            await bot.send_private_msg(user_id=admin, message=f'不存在客户端{client_no}')
+            await bot.send_private_msg(self_id=sid, user_id=admin, message=f'不存在客户端{client_no}')
 
 
 # 查看客户端状态
@@ -274,6 +278,7 @@ async def get_client_info(session):
     if session.ctx['user_id'] == admin:
         client_no = session.ctx['message'].extract_plain_text().replace(f"pcrstatus", "").strip()
         msg_list = []
+        sid = session.ctx['self_id']
         # 指定序号查序号客户端
         if client_no:
             try:
@@ -286,10 +291,11 @@ async def get_client_info(session):
                                 f"登录状态:{'未登录' if inst.client.shouldLogin else '已登录'}\n"
                                 f"可用性:{'可用' if inst.avail else '不可用'}\n"
                                 )
-                await bot.send_private_msg(user_id=admin,
+                await bot.send_private_msg(self_id=sid,
+                                           user_id=admin,
                                            message=f"{''.join(msg_list)}")
             except:
-                await bot.send_private_msg(user_id=admin, message=f'不存在客户端{client_no}')
+                await bot.send_private_msg(self_id=sid, user_id=admin, message=f'不存在客户端{client_no}')
         # 不指定查全部可用性状态
         else:
             for inst in inst_list:
@@ -297,7 +303,8 @@ async def get_client_info(session):
                                 f"账号{inst.ac_info['account']}\n"
                                 f"可用性:{'可用' if inst.avail else '不可用'}\n"
                                 )
-            await bot.send_private_msg(user_id=admin,
+            await bot.send_private_msg(self_id=sid,
+                                       user_id=admin,
                                        message=f"{''.join(msg_list)}共{len(inst_list)}个客户端")
 
 
@@ -309,18 +316,19 @@ async def validate(session):
         # client_no 账号编号 client_validate 验证码
         client_no = int(msp[0])
         client_validate = msp[1]
+        sid = session.ctx['self_id']
         try:
             inst = inst_list[client_no]
             if client_validate == "manual":
                 inst.otto = False
-                await bot.send_private_msg(user_id=admin, message=f'客户端{inst.no}切换至手动')
+                await bot.send_private_msg(self_id=sid, user_id=admin, message=f'客户端{inst.no}切换至手动')
             elif client_validate == "auto":
                 inst.otto = True
-                await bot.send_private_msg(user_id=admin, message=f'客户端{inst.no}切换至自动')
+                await bot.send_private_msg(self_id=sid, user_id=admin, message=f'客户端{inst.no}切换至自动')
             try:
                 inst.validate = client_validate
                 inst.captcha_lck.release()
             except:
                 pass
         except:
-            await bot.send_private_msg(user_id=admin, message=f'不存在客户端{client_no}')
+            await bot.send_private_msg(self_id=sid, user_id=admin, message=f'不存在客户端{client_no}')

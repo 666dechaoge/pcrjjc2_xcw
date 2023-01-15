@@ -5,7 +5,7 @@ import time
 import hashlib
 from . import rsacr
 import urllib
-from hoshino.aiorequests import post
+from .aiorequests import post
 
 bililogin="https://line1-sdk-center-login-sh.biligame.net/"
 
