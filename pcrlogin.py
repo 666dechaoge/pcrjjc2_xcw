@@ -144,10 +144,10 @@ class Login:
         sv.logger.info(f'{self.no}号客户端开始执行查询任务了')
         while True:
             # 需要登录就重新登录
-            while self.client.shouldLogin:
+            if self.client.shouldLogin:
+                self.avail = False
                 await self.login()
-                sv.logger.info(f'{self.no}号客户端{self.ac_info["account"]}重新登录！')
-            if not self.avail:
+                sv.logger.info(f'{self.no}号客户端{self.ac_info["account"]}重新登录成功！')
                 self.avail = True
 
             # 从队列取任务
@@ -158,7 +158,8 @@ class Login:
                 values = data[1]
                 method_name = method.__name__
                 game_id = values['game_id']
-            except:
+            except Exception as e:
+                sv.logger.error(f'分析队列任务出错:{e}')
                 await asyncio.sleep(1)
                 continue
             # 开始查询
@@ -171,11 +172,9 @@ class Login:
                 if e.code == 6:
                     JJCB.remove_by_game_id(game_id)
                     sv.logger.critical(f'已经自动删除错误的订阅{game_id}')
-                self.avail = False
                 continue
             except Exception as e:
                 sv.logger.error(f'对{game_id}的检查出错{e}')
-                self.avail = False
                 continue
             if method_name == 'query_rank':
                 await method(resall, self.no, values['game_id'], values['user_id'], values['ev'])
@@ -230,6 +229,8 @@ class Login:
 
     async def first_login(self):
         await self.login()
+        sv.logger.info(f'{self.no}号客户端{self.ac_info["account"]}首次登录成功！')
+        self.avail = True
         # 开始执行查询
         await self.query()
 

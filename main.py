@@ -155,16 +155,15 @@ async def query_rank(res_all, no, game_id, user_id, ev):
 async def on_query_arena_id(bot, ev):
     robj = ev['match']
     game_id = robj.group(1)
-    if not game_id:
-        await bot.finish(ev, '请输入13位游戏id', at_sender=True)
-    if len(game_id) != 13:
-        await bot.finish(ev, '游戏id有误，请正确输入13位id', at_sender=True)
-        return
     if get_avali():
-        await bot.send(ev, '查询ing')
-        pro_entity = PriorityEntry(2, (query_info, {"game_id": game_id, "ev": ev}))
-        await pro_queue.put(pro_entity)
-        return
+        if not game_id:
+            await bot.finish(ev, '请在指令后跟13位游戏id', at_sender=True)
+        elif len(game_id) != 13:
+            await bot.finish(ev, '游戏id有误，请正确输入13位id', at_sender=True)
+        else:
+            await bot.send(ev, '查询ing')
+            pro_entity = PriorityEntry(2, (query_info, {"game_id": game_id, "ev": ev}))
+            await pro_queue.put(pro_entity)
     else:
         await send_not_avail(bot, ev)
 

@@ -68,7 +68,7 @@ async def send_to_admin(message):
         except:
             pass
     if not flag:
-        raise Exception(f'向管理员发送消息\n{message}\n出错')
+        raise Exception(f'向管理员发送消息{message}出错')
 
 
 # 发送到群
@@ -84,7 +84,7 @@ async def send_to_group(group_id, message):
         except:
             pass
     if not flag:
-        raise Exception(f'向群{group_id}发送消息\n{message}\n出错')
+        raise Exception(f'向群{group_id}发送消息{message}出错')
 
 
 # 发送到好友
@@ -100,7 +100,7 @@ async def send_to_friend(user_id, message):
         except:
             pass
     if not flag:
-        raise Exception(f'向用户{user_id}发送消息\n{message}\n出错')
+        raise Exception(f'向用户{user_id}发送消息{message}出错')
 
 
 # 发送给sender
@@ -110,7 +110,7 @@ async def send_to_sender(ev, message):
                                    group_id=ev.group_id,
                                    message=f'[CQ:at,qq={ev.user_id}]{message}')
     except Exception as e:
-        raise Exception(f'{ev.self_id}向sender{ev.user_id}发送群消息\n{message}\n出错'
+        raise Exception(f'{ev.self_id}向sender{ev.user_id}发送群消息{message}出错'
                         f'{e}')
 
 
