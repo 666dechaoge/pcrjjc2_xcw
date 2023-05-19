@@ -102,3 +102,46 @@ class JJCHistoryStorage:
                 raise Exception('移除记录异常')
             finally:
                 conn.close()
+
+    def recent_jjc_ids(self):
+        with self.lock:
+            conn = self._connect()
+            cur = conn.cursor()
+            try:
+                cur.execute('''
+                SELECT UID,COUNT(*) from JJCHistoryStorage 
+                WHERE datetime(DATETIME) >= datetime('now', '-15 minute', 'localtime') 
+                AND ITEM = 1
+                group by UID
+                ''')
+                rows = cur.fetchall()
+                result_list = [row for row in rows]
+                dict_result = {k: v for k, v in result_list}
+                ids = [key for key, value in dict_result.items() if value >= 5]
+                return ids
+            except Exception:
+                raise Exception('查询记录条数异常')
+            finally:
+                conn.close()
+
+    def recent_pjjc_ids(self):
+        with self.lock:
+            conn = self._connect()
+            cur = conn.cursor()
+            try:
+                cur.execute('''
+                SELECT UID,COUNT(*) from JJCHistoryStorage 
+                WHERE datetime(DATETIME) >= datetime('now', '-15 minute', 'localtime') 
+                AND ITEM = 0
+                group by UID
+                ''')
+                rows = cur.fetchall()
+                result_list = [row for row in rows]
+                dict_result = {k: v for k, v in result_list}
+                ids = [key for key, value in dict_result.items() if value >= 5]
+                return ids
+            except Exception:
+                raise Exception('查询记录条数异常')
+            finally:
+                conn.close()
+

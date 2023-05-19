@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 from copy import deepcopy
 from itertools import groupby
@@ -19,6 +20,9 @@ id_user_tmp = {}  # 群用户最近一次选择的订阅id
 last_check = {}  # 群用户最近一次选择订阅的时间
 cache = {}  # 排名缓存
 detail_cache = {}  # 详细查询信息缓存
+jjc_fre_cache = set()
+pjjc_fre_cache = set()
+fre_lock = asyncio.Lock()
 
 # 数据库对象初始化
 JJCH = JJCHistoryStorage()
@@ -125,17 +129,19 @@ async def on_query_arena(bot, ev):
         await send_user_no_bind(bot, ev)
         return
     if get_avali():
+        n = 0
         for bind in subs:
             game_id = bind['game_id']
-            pro_entity = PriorityEntry(3, (query_rank, {"game_id": game_id, "user_id": user_id, "ev": ev}))
+            n = n + 1
+            pro_entity = PriorityEntry(3, (query_rank, {"game_id": game_id, "user_id": user_id, "ev": ev, "n": n}))
             await pro_queue.put(pro_entity)
     else:
         await send_not_avail(bot, ev)
 
 
-async def query_rank(res_all, no, game_id, user_id, ev):
+async def query_rank(res_all, no, game_id, user_id, ev, n):
     user_name = await get_user_name(user_id, ev.group_id)
-    msg_list = [f'\nXCW{no}号查询了{user_name}绑定的排名信息\n']
+    msg_list = [f'\nXCW{no}号查询了{user_name}绑定的第{n}个排名信息\n']
     try:
         # res_all = await queryall(game_id)
         res = res_all['user_info']
@@ -552,6 +558,94 @@ async def on_arena_schedule():
         sv.logger.info(f"query started for {len(bind_cache)} users!")
 
 
+@sv.scheduled_job('interval', minutes=15)
+async def check_frequent():
+    global jjc_fre_cache, pjjc_fre_cache
+    sv.logger.info(f"start check frequent")
+    async with fre_lock:
+        jjc_fre_last = jjc_fre_cache
+        pjjc_fre_last = pjjc_fre_cache
+        jjc_fre_cache = set(JJCH.recent_jjc_ids())
+        pjjc_fre_cache = set(JJCH.recent_pjjc_ids())
+    # 需要解除风控集
+    jjc_fre_release = jjc_fre_last - jjc_fre_cache
+    pjjc_fre_release = pjjc_fre_last - pjjc_fre_cache
+    # 新的风控集合
+    jjc_fre_new = jjc_fre_cache - jjc_fre_last
+    pjjc_fre_new = pjjc_fre_cache - pjjc_fre_last
+    if jjc_fre_new:
+        sv.logger.info(f"new frequent jjc:{jjc_fre_new}")
+        for game_id in jjc_fre_new:
+            a_game_bind = JJCB.select_by_game_id(game_id)
+            if a_game_bind:
+                bind = a_game_bind[0]
+                bind['arena'] = 0
+                group_id = bind['group_id']
+                user_id = bind['user_id']
+                JJCB.update(bind)
+                msg = f"[CQ:at,qq={user_id}]XCW检测到您绑定的游戏ID{game_id}在15分钟内记录过于频繁，已暂时关闭该ID的竞技场推送，XCW仍会记录变化历史，待下次检测正常后自动恢复，您也可以按照帮助手动开启"
+                await send_to_group(group_id=int(group_id), message=msg)
+    if pjjc_fre_new:
+        sv.logger.info(f"new frequent pjjc:{pjjc_fre_new}")
+        for game_id in pjjc_fre_new:
+            a_game_bind = JJCB.select_by_game_id(game_id)
+            if a_game_bind:
+                bind = a_game_bind[0]
+                bind['grand_arena'] = 0
+                group_id = bind['group_id']
+                user_id = bind['user_id']
+                JJCB.update(bind)
+                msg = f"[CQ:at,qq={user_id}]XCW检测到您绑定的游戏ID{game_id}在15分钟内记录过于频繁，已暂时关闭该ID的公主竞技场推送，XCW仍会记录变化历史，待下次检测正常后自动恢复，您也可以按照帮助手动开启"
+                await send_to_group(group_id=int(group_id), message=msg)
+    if jjc_fre_release:
+        sv.logger.info(f"release frequent jjc:{jjc_fre_release}")
+        for game_id in jjc_fre_release:
+            a_game_bind = JJCB.select_by_game_id(game_id)
+            if a_game_bind:
+                bind = a_game_bind[0]
+                bind['arena'] = 1
+                group_id = bind['group_id']
+                user_id = bind['user_id']
+                JJCB.update(bind)
+                msg = f"[CQ:at,qq={user_id}]XCW检测到您绑定的游戏ID{game_id}在15分钟内记录恢复正常，已自动开启该ID的竞技场订阅"
+                await send_to_group(group_id=int(group_id), message=msg)
+    if pjjc_fre_release:
+        sv.logger.info(f"release frequent pjjc:{pjjc_fre_release}")
+        for game_id in pjjc_fre_release:
+            a_game_bind = JJCB.select_by_game_id(game_id)
+            if a_game_bind:
+                bind = a_game_bind[0]
+                bind['grand_arena'] = 1
+                group_id = bind['group_id']
+                user_id = bind['user_id']
+                JJCB.update(bind)
+                msg = f"[CQ:at,qq={user_id}]XCW检测到您绑定的游戏ID{game_id}在15分钟内记录恢复正常，已自动开启该ID的公主竞技场订阅"
+                await send_to_group(group_id=int(group_id), message=msg)
+
+
+@sv.on_fullmatch('jjc风控列表')
+async def get_fre_list(bot, ev):
+    is_su = priv.check_priv(ev, priv.SUPERUSER)
+    if not is_su:
+        msg = '需要超级用户权限'
+    else:
+        async with fre_lock:
+            msg = "jjc风控列表：\n"
+            if not jjc_fre_cache:
+                msg += "无记录\n"
+            else:
+                for jjc_fre_id in jjc_fre_cache:
+                    msg += jjc_fre_id + "\n"
+            msg += "pjjc风控列表：\n"
+            if not pjjc_fre_cache:
+                msg += "无记录\n"
+            else:
+                for pjjc_fre_id in pjjc_fre_cache:
+                    msg += pjjc_fre_id + "\n"
+            msg += "查询完毕"
+    await bot.send(ev, msg)
+
+
 async def compare(resall, no, bind_info):
     global cache
     game_id = bind_info['game_id']
@@ -581,25 +675,42 @@ async def compare(resall, no, bind_info):
                     user_id=int(user_id),
                     message=f'XCW{no}号检测到[CQ:at,qq={user_id}]所绑定的{game_id}游戏昵称发生变化：{last[3]}->{res[3]}'
                 )
-
+        async with fre_lock:
+            jjc_fre = jjc_fre_cache
+            pjjc_fre = pjjc_fre_cache
         # 两次间隔排名变化且开启了相关订阅就记录到数据库
-        if res[0] != last[0] and bind_info['arena']:
-            try:
-                JJCH.add(int(game_id), 1, last[0], res[0])
-                JJCH.refresh(int(game_id), 1)
-                sv.logger.info(f"XCW{no}号检测到{game_id}: JJC {last[0]}->{res[0]}")
-            except Exception as e:
-                sv.logger.critical(f"sqlite数据库操作异常{e}")
-        if res[1] != last[1] and bind_info['grand_arena']:
-            try:
-                JJCH.add(int(game_id), 0, last[1], res[1])
-                JJCH.refresh(int(game_id), 0)
-                sv.logger.info(f"XCW{no}号检测到{game_id}: PJJC {last[1]}->{res[1]}")
-            except Exception as e:
-                sv.logger.critical(f"sqlite数据库操作异常{e}")
+        if res[0] != last[0]:
+            if bind_info['arena'] or int(game_id) in jjc_fre:
+                try:
+                    JJCH.add(int(game_id), 1, last[0], res[0])
+                    JJCH.refresh(int(game_id), 1)
+                    sv.logger.info(f"XCW{no}号检测到{game_id}: JJC {last[0]}->{res[0]}")
+                except Exception as e:
+                    sv.logger.critical(f"sqlite数据库操作异常{e}")
+        if res[1] != last[1]:
+            if bind_info['grand_arena'] or int(game_id) in pjjc_fre:
+                try:
+                    JJCH.add(int(game_id), 0, last[1], res[1])
+                    JJCH.refresh(int(game_id), 0)
+                    sv.logger.info(f"XCW{no}号检测到{game_id}: PJJC {last[1]}->{res[1]}")
+                except Exception as e:
+                    sv.logger.critical(f"sqlite数据库操作异常{e}")
 
         # 指定排名以外直接忽略
-        if res[0] > bind_info['notice_rank'] and res[1] > bind_info['notice_rank']:
+        # 双场提醒都开
+        if bind_info['arena'] and bind_info['grand_arena']:
+            if res[0] > bind_info['notice_rank'] and res[1] > bind_info['notice_rank']:
+                return
+        # 只开竞技场提醒
+        elif bind_info['arena']:
+            if res[0] > bind_info['notice_rank']:
+                return
+        # 只开公主竞技场提醒
+        elif bind_info['grand_arena']:
+            if res[1] > bind_info['notice_rank']:
+                return
+        # 双场提醒都关，直接return
+        else:
             return
 
         now_localtime = get_now_localtime()

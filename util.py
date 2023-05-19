@@ -65,8 +65,8 @@ async def send_to_admin(message):
                                          message=message)
             flag = True
             break
-        except:
-            pass
+        except Exception as e:
+            print(e)
     if not flag:
         raise Exception(f'向管理员发送消息{message}出错')
 
@@ -81,8 +81,8 @@ async def send_to_group(group_id, message):
                                        message=message)
             flag = True
             break
-        except:
-            pass
+        except Exception as e:
+            print(e)
     if not flag:
         raise Exception(f'向群{group_id}发送消息{message}出错')
 
@@ -97,8 +97,8 @@ async def send_to_friend(user_id, message):
                                          message=message)
             flag = True
             break
-        except:
-            pass
+        except Exception as e:
+            print(e)
     if not flag:
         raise Exception(f'向用户{user_id}发送消息{message}出错')
 

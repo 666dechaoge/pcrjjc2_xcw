@@ -47,6 +47,10 @@ sv_help_sup = '''竞技场高级设置
 
 【提醒排名x名】设置订阅目标只有在指定排名以内才会提醒,默认取值15001
 '''
+
+sv_help_svc = '''发 竞技场推送帮助
+发 竞技场推送帮助
+发 竞技场推送帮助'''
 # 服务定义
 sv = SafeService('竞技场推送', help_=sv_help, bundle='pcr订阅', enable_on_default=False, manage_priv=priv.SUPERUSER)
 
@@ -64,3 +68,8 @@ async def send_jjchelp2(bot, ev):
 @sv.on_fullmatch('竞技场推送高级帮助', only_to_me=False)
 async def send_jjchelp3(bot, ev):
     await bot.send(ev, sv_help_sup)
+
+
+@sv.on_fullmatch('竞技场帮助', only_to_me=False)
+async def send_jjchelp(bot, ev):
+    await bot.send(ev, sv_help_svc)

@@ -37,7 +37,7 @@ class JJCBindsStorage:
                     '''
                                         )
             except Exception as e:
-                raise Exception(f'创建JJCHistory表失败{e}')
+                raise Exception(f'创建JJCBinds表失败{e}')
             finally:
                 self._connect().close()
 

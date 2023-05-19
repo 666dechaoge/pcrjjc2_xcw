@@ -62,25 +62,13 @@ class Login:
                 gt = args[0]
                 challenge = args[1]
                 userid = args[2]
-                url = f"https://help.tencentbot.top/geetest/?captcha_type=1&challenge={challenge}&gt={gt}&userid={userid}&gs=1 "
+                url = f"https://help.tencentbot.top/geetest_/?captcha_type=1&challenge={challenge}&gt={gt}&userid={userid}&gs=1 "
                 try:
                     await send_to_admin(
                         f'pcr账号登录需要验证码，请完成以下链接中的验证内容后将第1个方框的内容点击复制，并加上"pcrval {self.no} "前缀发送(空格必须)给机器人完成验证\n'
                         f'验证链接：{url}\n示例：pcrval {self.no} 123456789\n您也可以发送 pcrval {self.no} auto 命令bot自动过验证码')
                 except Exception as e:
                     sv.logger.critical(f'发送pcr登录验证码链接至管理员失败:{type(e)}')
-                gl = sv.enable_group
-                for g in gl:
-                    await asyncio.sleep(0.5)
-                    try:
-                        await send_to_group(group_id=g, message="bot的PCR账号登录需要验证码，请联系管理员解决")
-                        sv.logger.info(f'群{g} 投递bot异常成功')
-                    except Exception as e:
-                        sv.logger.error(f'群{g} 投递bot异常失败：{type(e)}')
-                        try:
-                            await send_to_admin(f'群{g} 投递bot异常失败：{type(e)}')
-                        except Exception as e:
-                            sv.logger.critical(f'向管理员进行错误回报时发生错误：{type(e)}')
                 await self.captcha_lck.acquire()
                 self.validating = False
                 return self.validate
@@ -177,7 +165,7 @@ class Login:
                 sv.logger.error(f'对{game_id}的检查出错{e}')
                 continue
             if method_name == 'query_rank':
-                await method(resall, self.no, values['game_id'], values['user_id'], values['ev'])
+                await method(resall, self.no, values['game_id'], values['user_id'], values['ev'], values['n'])
             elif method_name == 'query_info':
                 await method(resall, self.no, values['ev'])
             elif method_name == 'compare':
