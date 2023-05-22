@@ -4,7 +4,6 @@ from copy import deepcopy
 from itertools import groupby
 from operator import itemgetter
 from hoshino import priv
-from hoshino.typing import CQHttpError
 from hoshino.typing import NoticeSession, MessageSegment
 from hoshino.util import pic2b64
 from .create_img import generate_info_pic, generate_support_pic
@@ -24,6 +23,7 @@ jjc_fre_cache = set()
 pjjc_fre_cache = set()
 fre_lock = asyncio.Lock()
 
+status = True
 # 数据库对象初始化
 JJCH = JJCHistoryStorage()
 JJCB = JJCBindsStorage()
@@ -41,7 +41,7 @@ class PriorityEntry(object):
 
 # 没有可用的pcr客户端回复
 async def send_not_avail(bot, ev):
-    await bot.send(ev, '服务不可用')
+    await bot.send(ev, '竞技场推送服务不可用')
 
 
 # 竞技场未绑定回复
@@ -548,7 +548,15 @@ async def send_parena_history(bot, ev):
 # 关键轮询
 @sv.scheduled_job('interval', minutes=0.2)
 async def on_arena_schedule():
-    if get_avali():
+    global status
+    last_status = status
+    status = get_avali()
+    if last_status != status:
+        if not status:
+            await send_all_sv_group(sv, "竞技场推送服务不可用，可能是服务器正在维护或者所有bot账号登录出现问题")
+        if status:
+            await send_all_sv_group(sv, "竞技场推送服务已恢复")
+    if status:
         JJCB.refresh()
         bind_cache = deepcopy(JJCB.bind_cache)
         for game_id in bind_cache:

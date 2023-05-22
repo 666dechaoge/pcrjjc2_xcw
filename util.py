@@ -1,3 +1,4 @@
+import asyncio
 import time
 from nonebot import get_bot
 import hoshino
@@ -138,3 +139,18 @@ async def get_all_group_list():
         except:
             raise Exception(f'{sid}获取群列表出错')
     return group_list
+
+
+async def send_all_sv_group(sv, message):
+    gl = sv.enable_group
+    for g in gl:
+        await asyncio.sleep(0.5)
+        try:
+            await send_to_group(group_id=g, message=message)
+            sv.logger.info(f'群{g} 投递bot异常成功')
+        except Exception as e:
+            sv.logger.error(f'群{g} 投递bot异常失败：{type(e)}')
+            try:
+                await send_to_admin(f'群{g} 投递bot异常失败：{type(e)}')
+            except Exception as e:
+                sv.logger.critical(f'向管理员进行错误回报时发生错误：{type(e)}')
