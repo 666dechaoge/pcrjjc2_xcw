@@ -6,7 +6,6 @@ from operator import itemgetter
 from hoshino import priv
 from hoshino.typing import NoticeSession, MessageSegment
 from hoshino.util import pic2b64
-
 from .create_img import generate_info_pic, generate_support_pic
 from .jjcbinds import *
 from .jjchistory import *
@@ -202,7 +201,7 @@ def delete_game_bind(game_id):
 
 
 # 用户订阅删除方法
-def delete_user_bind(user_id):
+def delete_user_bind(user_id: str):
     num, subs = get_user_sub(user_id)
     if num != 0:
         for result in subs:
@@ -214,7 +213,7 @@ def delete_user_bind(user_id):
 
 
 # 群订阅删除方法
-def delete_group_bind(group_id):
+def delete_group_bind(group_id: str):
     results = JJCB.select_by_group_id(group_id)
     if not results:
         return False
@@ -878,22 +877,23 @@ async def send_sub_config(bot, ev):
 @sv.on_notice('group_decrease.leave', 'group_decrease.kick', 'group_decrease.kick_me')
 async def leave_notice(session: NoticeSession):
     # uid是被踢的人qq号
-    uid = str(session.ctx['user_id'])
-    gid = str(session.ctx['group_id'])
-    sid = str(session.ctx['self_id'])
+    ev = session.event
+    uid = ev.user_id
+    sid = ev.self_id
+    gid = ev.group_id
 
     # bot被踢
     if uid == sid:
         gl_ids = await get_all_group_list()
         if gid not in gl_ids:
-            delete_group_bind(gid)
+            delete_group_bind(str(gid))
             await send_to_admin(f'bot退群或被踢，且再无其他机器人QQ在此群，群:{gid}的竞技场推送订阅现已都被删除')
     else:
         binds = JJCB.select_by_user_id(uid)
         if not binds:
             return
         for bind in binds:
-            if bind['group_id'] == gid:
+            if bind['group_id'] == str(gid):
                 delete_game_bind(bind['game_id'])
 
 
