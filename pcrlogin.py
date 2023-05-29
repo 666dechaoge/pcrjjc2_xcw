@@ -4,7 +4,6 @@ from json import load, loads
 from os.path import dirname, join
 
 import hoshino
-# from hoshino.typing import CQHttpError
 from nonebot import get_bot, on_command
 
 from .aiorequests import get
@@ -12,6 +11,7 @@ from .jjcbinds import JJCBindsStorage
 from .pcrclient import pcrclient, bsdkclient, ApiException
 from .service import sv
 from .util import send_to_admin
+from .geetest import local_url_head
 
 bot = get_bot()
 JJCB = JJCBindsStorage()
@@ -32,10 +32,10 @@ class Login:
         self.ac_info = account_info  # 账号信息
 
         self.captcha_lck = Lock()  # 验证码锁
-        self.validate = None  # 验证码或者验证方式信息，与otto,captcha_verifier有关
+        self.validate = None  # 验证码或者验证方式信息，与auto,captcha_verifier有关
         self.validating = False  # 验证状态
         self.ac_first = False
-        self.otto = True  # 验证方式
+        self.auto = False  # 验证方式
         self.captcha_cnt = 0  # 自动过验证码尝试次数
 
         self.client = pcrclient(bsdkclient(self.ac_info, self.captcha_verifier, self.errlogger))
@@ -47,7 +47,7 @@ class Login:
 
     async def captcha_verifier(self, *args):
         if len(args) == 0:
-            return self.otto
+            return self.auto
         if len(args) == 1 and type(args[0]) == int:
             self.captcha_cnt = args[0]
             return self.captcha_cnt
@@ -57,25 +57,26 @@ class Login:
             self.ac_first = True
 
         self.validating = True
-        if not self.otto:
+        if not self.auto:
             if not admin:
                 bot.logger.critical('captcha is required while admin qq is not set, so the login can\'t continue')
             else:
                 gt = args[0]
                 challenge = args[1]
                 userid = args[2]
-                url = f"https://help.tencentbot.top/geetest_/?captcha_type=1&challenge={challenge}&gt={gt}&userid={userid}&gs=1 "
+                online_url_head = "https://cc004.github.io/geetest/geetest.html"
+                url = f"?captcha_type=1&challenge={challenge}&gt={gt}&userid={userid}&gs=1"
                 try:
                     await send_to_admin(
                         f'pcr账号登录需要验证码，请完成以下链接中的验证内容后将第1个方框的内容点击复制，并加上"pcrval {self.no} "前缀发送(空格必须)给机器人完成验证\n'
-                        f'验证链接：{url}\n示例：pcrval {self.no} 123456789\n您也可以发送 pcrval {self.no} auto 命令bot自动过验证码')
+                        f'验证链接：{local_url_head}{url}\n备用链接：{online_url_head}{url}\n示例：pcrval {self.no} 123456789\n您也可以发送 pcrval {self.no} auto 命令bot自动过验证码')
                 except Exception as e:
-                    sv.logger.critical(f'发送pcr登录验证码链接至管理员失败:{type(e)}')
+                    sv.logger.critical(f'发送pcr登录验证码链接{local_url_head}{url}至管理员失败:{type(e)}')
                 await self.captcha_lck.acquire()
                 self.validating = False
                 return self.validate
 
-        while self.captcha_cnt < 5:
+        while self.captcha_cnt < 3:
             self.captcha_cnt += 1
             try:
                 print(f'客户端{self.no}测试新版自动过码中，当前尝试第{self.captcha_cnt}次。')
@@ -109,8 +110,8 @@ class Login:
             except:
                 pass
 
-        if self.captcha_cnt >= 5:
-            self.otto = False
+        if self.captcha_cnt >= 3:
+            self.auto = False
             await send_to_admin(f'客户端{self.no}自动过码多次尝试失败，可能为服务器错误，自动切换为手动。\n'
                                 f'确实服务器无误后，可发送 pcrval {self.no} auto重新触发自动过码。')
             await send_to_admin(f'客户端{self.no}切换至手动')
@@ -167,11 +168,22 @@ class Login:
                 sv.logger.error(f'对{game_id}的检查出错{e}')
                 continue
             if method_name == 'query_rank':
-                await method(resall, self.no, values['game_id'], values['user_id'], values['ev'], values['n'])
+                try:
+                    await asyncio.wait_for(
+                        method(resall, self.no, values['game_id'], values['user_id'], values['ev'], values['n']),
+                        timeout=5)
+                except asyncio.TimeoutError:
+                    sv.logger.critical("查询排名操作超时")
             elif method_name == 'query_info':
-                await method(resall, self.no, values['ev'])
+                try:
+                    await asyncio.wait_for(method(resall, self.no, values['ev']), timeout=5)
+                except asyncio.TimeoutError:
+                    sv.logger.critical("查询信息操作超时")
             elif method_name == 'compare':
-                await method(resall, self.no, values['bind_info'])
+                try:
+                    await asyncio.wait_for(method(resall, self.no, values['bind_info']), timeout=5)
+                except asyncio.TimeoutError:
+                    sv.logger.critical("比较排名操作超时")
             else:
                 continue
 
@@ -277,7 +289,7 @@ async def get_client_info(session):
                 inst = inst_list[client_no]
                 msg_list.append(f"客户端{inst.no}:\n"
                                 f"账号{inst.ac_info['account']}\n"
-                                f"登录方式:{'自动' if inst.otto else '手动'}\n"
+                                f"登录方式:{'自动' if inst.auto else '手动'}\n"
                                 f"验证码状态:{'卡验证' if inst.validating else '未卡验证'}\n"
                                 f"登录状态:{'未登录' if inst.client.shouldLogin else '已登录'}\n"
                                 f"可用性:{'可用' if inst.avail else '不可用'}\n"
@@ -311,10 +323,10 @@ async def validate(session):
         try:
             inst = inst_list[client_no]
             if client_validate == "manual":
-                inst.otto = False
+                inst.auto = False
                 await bot.send_private_msg(self_id=sid, user_id=admin, message=f'客户端{inst.no}切换至手动')
             elif client_validate == "auto":
-                inst.otto = True
+                inst.auto = True
                 await bot.send_private_msg(self_id=sid, user_id=admin, message=f'客户端{inst.no}切换至自动')
             try:
                 inst.validate = client_validate

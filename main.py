@@ -382,7 +382,7 @@ async def delete_arena_sub(bot, ev):
 
 
 # 删除某个用户全部订阅
-@sv.on_prefix('清空竞技场订阅', '清空竞技场绑定')
+@sv.on_prefix('清空我的竞技场订阅', '清空我的竞技场绑定')
 async def delete_arena_sub(bot, ev):
     gid = ev.group_id
     uid = ev.user_id

@@ -78,16 +78,16 @@ async def login(bili_account,bili_pwd, make_captch):
     if "access_key" in login_sta:
         return login_sta
 
-    otto = False
+    auto = False
     try:
         # 获取登录方式是自动还是手动
-        otto = await make_captch()
+        auto = await make_captch()
     except:  # 兼容原版手动过码
         pass
-    if otto == True:
+    if auto:
         cap = await make_captch(True, True)
         if cap == "manual":
-            otto = False
+            auto = False
         else:
             login_sta = await login2(bili_account, bili_pwd, cap["challenge"], cap['gt_user_id'], cap['validate'])
             if "access_key" in login_sta:
@@ -95,7 +95,7 @@ async def login(bili_account,bili_pwd, make_captch):
                 await make_captch(0)
             return login_sta
 
-    if otto == False:
+    if not auto:
         cap = await captch()
         captch_done = await make_captch(cap['gt'], cap['challenge'], cap['gt_user_id'])
         login_sta = await login2(bili_account, bili_pwd, cap["challenge"], cap['gt_user_id'], captch_done)
