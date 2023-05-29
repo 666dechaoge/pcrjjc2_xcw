@@ -20,7 +20,7 @@ elif hasattr(config, "IP") and getattr(config, "IP"):
     public_address = f"{getattr(config, 'IP')}:{getattr(config, 'PORT')}"
 else:
     try:
-        res = await (await get(url=f"https://4.ipw.cn")).text
+        res = get(url=f"https://4.ipw.cn").text
         public_address = f"{res}:{getattr(config, 'PORT')}"
     except:
         public_address = "获取bot地址失败"
