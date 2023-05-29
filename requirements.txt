@@ -5,3 +5,5 @@ pycryptodome~=3.18.0
 python_dateutil~=2.8.2
 requests~=2.31.0
 zhconv~=1.4.3
+jinja2
+quart
