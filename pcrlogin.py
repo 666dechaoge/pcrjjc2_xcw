@@ -88,7 +88,7 @@ class Login:
                 userid = args[2]
                 online_url_head = "https://cc004.github.io/geetest/geetest.html"
                 url = f"?captcha_type=1&challenge={challenge}&gt={gt}&userid={userid}&gs=1"
-                print(url)
+                print(f'来自{self.no}号客户端的验证:{online_url_head}{url}')
                 try:
                     await send_to_admin(
                         f'pcr账号登录需要验证码，请在浏览器中打开链接，将验证内容后将第1个方框的内容点击复制，并加上"pcrval {self.no} "前缀发送(空格必须)给机器人完成验证\n'
