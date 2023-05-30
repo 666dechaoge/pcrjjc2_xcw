@@ -14,7 +14,7 @@ def has_port(string):
     return re.search(pattern, string) is not None
 
 
-if hasattr(config, "PUBLIC_ADDRESS") and getattr(config, "PULIC_ADDRESS"):
+if hasattr(config, "PUBLIC_ADDRESS") and getattr(config, "PUBLIC_ADDRESS"):
     public_address = getattr(config, 'PUBLIC_ADDRESS')
 elif hasattr(config, "IP") and getattr(config, "IP"):
     public_address = f"{getattr(config, 'IP')}:{getattr(config, 'PORT')}"
