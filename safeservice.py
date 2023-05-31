@@ -1,8 +1,6 @@
-from asyncio import get_event_loop, run_coroutine_threadsafe
-from typing import Callable
-
+from typing import Callable, overload
 from hoshino import Service
-
+from asyncio import get_event_loop, run_coroutine_threadsafe
 
 class SafeService(Service):
 

@@ -20,7 +20,7 @@ try:
     with open(join(curpath, 'account.json')) as fp:
         acinfos = load(fp)
 except:
-    sv.logger.error("未找到账号文件！")
+    sv.logger.critical("未找到账号文件！")
 
 admin = hoshino.config.SUPERUSERS[0]
 
@@ -81,7 +81,8 @@ class Login:
         self.validating = True
         if not self.auto:
             if not admin:
-                bot.logger.critical('captcha is required while admin qq is not set, so the login can\'t continue')
+                sv.logger.critical('需要发验证码给主人，但是主人QQ没有设置，无法继续后续流程')
+                raise Exception("需要发验证码给主人，但是主人QQ没有设置，无法继续后续流程")
             else:
                 gt = args[0]
                 challenge = args[1]
@@ -92,9 +93,9 @@ class Login:
                 try:
                     await send_to_admin(
                         f'pcr账号登录需要验证码，请在浏览器中打开链接，将验证内容后将第1个方框的内容点击复制，并加上"pcrval {self.no} "前缀发送(空格必须)给机器人完成验证\n'
-                        f'验证链接：{await get_local_url_head()}{url}\n备用链接：{online_url_head}{url}\n示例：pcrval {self.no} 123456789\n您也可以发送 pcrval {self.no} auto 命令bot自动过验证码')
-                except Exception as e:
-                    sv.logger.critical(f'发送pcr登录验证码链接{url}至管理员失败:{type(e)}')
+                        f'（如果无法使用请检查服务器开放端口或者尝试替换为127.0.0.1）验证链接：{await get_local_url_head()}{url}\n备用链接：{online_url_head}{url}\n示例：pcrval {self.no} 123456789\n您也可以发送 pcrval {self.no} auto 命令bot自动过验证码')
+                except:
+                    sv.logger.critical(f'发送pcr登录验证码链接{await get_local_url_head()}{url}至管理员失败')
                 await self.captcha_lck.acquire()
                 self.validating = False
                 return self.validate
@@ -120,7 +121,7 @@ class Login:
                         tim = min(int(nu), 3) * 5
                         print(f"sleep={tim}")
                         await asyncio.sleep(tim)
-                    else:
+                else:
                         info = res["info"]
                         if info in ["fail", "url invalid"]:
                             break
@@ -136,8 +137,8 @@ class Login:
         if self.captcha_cnt >= 3:
             self.auto = False
             await send_to_admin(f'客户端{self.no}自动过码多次尝试失败，可能为服务器错误，自动切换为手动。\n'
-                                f'确实服务器无误后，可发送 pcrval {self.no} auto重新触发自动过码。')
-            await send_to_admin(f'客户端{self.no}切换至手动')
+                                f'确实服务器无误后，可发送 pcrval {self.no} auto重新触发自动过码。\n'
+                                f'客户端{self.no}切换至手动')
             self.validating = False
             return "manual"
 
@@ -192,21 +193,19 @@ class Login:
                 continue
             if method_name == 'query_rank':
                 try:
-                    await asyncio.wait_for(
-                        method(resall, self.no, values['game_id'], values['user_id'], values['ev'], values['n']),
-                        timeout=5)
-                except asyncio.TimeoutError:
-                    sv.logger.critical("查询排名操作超时")
+                    await method(resall, self.no, values['game_id'], values['user_id'], values['ev'], values['n'])
+                except Exception as e:
+                    sv.logger.critical(e)
             elif method_name == 'query_info':
                 try:
-                    await asyncio.wait_for(method(resall, self.no, values['ev']), timeout=5)
-                except asyncio.TimeoutError:
-                    sv.logger.critical("查询信息操作超时")
+                    await method(resall, self.no, values['ev'])
+                except Exception as e:
+                    sv.logger.critical(e)
             elif method_name == 'compare':
                 try:
-                    await asyncio.wait_for(method(resall, self.no, values['bind_info']), timeout=5)
-                except asyncio.TimeoutError:
-                    sv.logger.critical("比较排名操作超时")
+                    await method(resall, self.no, values['bind_info'])
+                except Exception as e:
+                    sv.logger.critical(e)
             else:
                 continue
 

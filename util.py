@@ -61,15 +61,15 @@ async def send_to_admin(message):
     flag = False
     for sid in hoshino.get_self_ids():
         try:
-            await cqbot.send_private_msg(self_id=sid,
-                                         user_id=hoshino.config.SUPERUSERS[0],
-                                         message=message)
+            await asyncio.wait_for(cqbot.send_private_msg(self_id=sid,
+                                                          user_id=hoshino.config.SUPERUSERS[0],
+                                                          message=message), timeout=5)
             flag = True
             break
         except Exception as e:
             print(e)
     if not flag:
-        raise Exception(f'向管理员发送消息{message}出错')
+        raise Exception(f'向管理员发送消息【{message}】出错')
 
 
 # 发送到群
@@ -77,15 +77,15 @@ async def send_to_group(group_id, message):
     flag = False
     for sid in hoshino.get_self_ids():
         try:
-            await cqbot.send_group_msg(self_id=sid,
-                                       group_id=group_id,
-                                       message=message)
+            await asyncio.wait_for(cqbot.send_group_msg(self_id=sid,
+                                                        group_id=group_id,
+                                                        message=message), timeout=5)
             flag = True
             break
         except Exception as e:
             print(e)
     if not flag:
-        raise Exception(f'向群{group_id}发送消息{message}出错')
+        raise Exception(f'向群{group_id}发送消息【{message}】出错')
 
 
 # 发送到好友
@@ -93,25 +93,25 @@ async def send_to_friend(user_id, message):
     flag = False
     for sid in hoshino.get_self_ids():
         try:
-            await cqbot.send_private_msg(self_id=sid,
-                                         user_id=user_id,
-                                         message=message)
+            await asyncio.wait_for(cqbot.send_private_msg(self_id=sid,
+                                                          user_id=user_id,
+                                                          message=message), timeout=5)
             flag = True
             break
         except Exception as e:
             print(e)
     if not flag:
-        raise Exception(f'向用户{user_id}发送消息{message}出错')
+        raise Exception(f'向用户{user_id}发送消息【{message}】出错')
 
 
 # 发送给sender
 async def send_to_sender(ev, message):
     try:
-        await cqbot.send_group_msg(self_id=ev.self_id,
-                                   group_id=ev.group_id,
-                                   message=f'[CQ:at,qq={ev.user_id}]{message}')
+        await asyncio.wait_for(cqbot.send_group_msg(self_id=ev.self_id,
+                                                    group_id=ev.group_id,
+                                                    message=f'[CQ:at,qq={ev.user_id}]{message}'), timeout=5)
     except Exception as e:
-        raise Exception(f'{ev.self_id}向sender{ev.user_id}发送群消息{message}出错'
+        raise Exception(f'bot账号{ev.self_id}向群{ev.group_id}里用户{ev.user_id}发送群消息【{message}】出错\n'
                         f'{e}')
 
 
@@ -143,14 +143,18 @@ async def get_all_group_list():
 
 async def send_all_sv_group(sv, message):
     gl = sv.enable_group
+    fail_gl = []
     for g in gl:
         await asyncio.sleep(0.5)
         try:
             await send_to_group(group_id=g, message=message)
             sv.logger.info(f'群{g} 投递bot异常成功')
-        except Exception as e:
-            sv.logger.error(f'群{g} 投递bot异常失败：{type(e)}')
+        except:
+            fail_gl.append(f'{gl}\n')
+            sv.logger.critical(f'群{g} 投递bot异常失败')
+        if fail_gl:
             try:
-                await send_to_admin(f'群{g} 投递bot异常失败：{type(e)}')
+                err_gl_msg = " ".join(fail_gl) + '投递bot异常失败'
+                await send_to_admin(err_gl_msg)
             except Exception as e:
-                sv.logger.critical(f'向管理员进行错误回报时发生错误：{type(e)}')
+                sv.logger.critical(e)

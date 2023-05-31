@@ -188,9 +188,9 @@ async def query_info(allres, no, ev):
         try:
             await send_to_sender(ev, f"\n{str(result_image)}\n{result_support}")
         except Exception as e:
-            sv.logger.error(f"发送出错，{e}")
+            sv.logger.error(f"发送出错{e}")
     except Exception as e:
-        await send_to_sender(ev, f'查询出错，{e}')
+        await send_to_sender(ev, f'查询出错{e}')
 
 
 # 单个订阅删除方法
@@ -791,23 +791,12 @@ async def compare(resall, no, bind_info):
             # 两次最新时间间隔太短，忽略
             elif res[2] != last[2] and bind_info['login_notice']:
                 sv.logger.info(f"XCW{no}号检测到{res[3]}的最新时间间隔小于{bind_info['notice_interval']}分钟,忽略")
-    except Exception as c:
-        sv.logger.error(f'CQHTTPError:{c}')
-        try:
-            # 推送失败发信息到群
-            await send_to_group(group_id=int(group_id),
-                                message=f'{c}')
-        except Exception as e:
-            sv.logger.error(f'CQHTTPError:{e}')
-            err_msg = f'群:{group_id}\n' \
-                      f'QQ:{user_id}\n' \
-                      f'绑定ID:{game_id}' \
-                      f'内容:{e}'
-            try:
-                # 失败信息发送到群也出错，则报告给admin
-                await send_to_admin(err_msg)
-            except Exception as e_admin:
-                sv.logger.critical(f'向管理员进行竞技场推送错误报告时发生错误:{e_admin}')
+    except Exception as e:
+        err_msg = f'群:{group_id}\n' \
+                  f'QQ:{user_id}\n' \
+                  f'绑定ID:{game_id}\n' \
+                  f'内容:{e}'
+        sv.logger.critical(err_msg)
 
 
 # 相关信息统计
