@@ -143,18 +143,10 @@ async def get_all_group_list():
 
 async def send_all_sv_group(sv, message):
     gl = sv.enable_group
-    fail_gl = []
     for g in gl:
         await asyncio.sleep(0.5)
         try:
             await send_to_group(group_id=g, message=message)
             sv.logger.info(f'群{g} 投递bot异常成功')
         except:
-            fail_gl.append(f'{gl}\n')
             sv.logger.critical(f'群{g} 投递bot异常失败')
-        if fail_gl:
-            try:
-                err_gl_msg = " ".join(fail_gl) + '投递bot异常失败'
-                await send_to_admin(err_gl_msg)
-            except Exception as e:
-                sv.logger.critical(e)
