@@ -15,14 +15,33 @@
 
 2.更改account.json内的account和password为bilibili账号的用户名和密码（仅1个账号也可），管理账号与接收验证码的人员取自bot的主人。 
 
-3.(可选)配置bot发送验证码链接时用到的本地地址，config为机器人的配置文件__bot__.py所配置的属性，不配置则访问4.ipw.cn来获取IP地址，只有本身有公网IP才有效，否则请在本地使用127.0.0.1
+3.(可选)配置插件自带的验证码网页，不配置只使用公共的也可以
 
-config配置示例
+- 有公网IP情况下以下三种方法任选一种即可，需要修改机器人的配置文件__bot__.py
+
+(1)添加PUBLIC_ADDRESS属性，适用于已经对访问bot做了自定义的情况，示例：
+
 ```python
-PORT = 8080  # 配置已有，默认即可
-IP = '1.2.3.4'  # 设置你的服务器IP,推荐添加
-PUBLIC_ADDRESS = 'example.com:8080'  # 设置能访问到bot的域名或者域名端口组合,如果有推荐添加
+PUBLIC_ADDRESS = 'example.com:8080'  # 设置能访问到bot的域名，域名端口或者IP端口组合
 ```
+(2)添加IP属性，搭配端口使用，需要HOST设置为'0.0.0.0'，并开放bot的端口,将bot暴露在公网上⚠，强烈推荐配置好ACCESS_TOKEN再使用，示例：
+
+```python
+HOST = '0.0.0.0'  # 开放公网访问使用此条配置（不安全）
+PORT = 8080
+IP = '1.1.1.1' # bot公网IP
+ACCESS_TOKEN: '' # 需要和gocqhttp配置的access-token相同
+```
+
+(3)自动访问4.ipw.cn获取公网IP，搭配端口使用，需要HOST设置为'0.0.0.0'，并开放bot的端口,将bot暴露在公网上⚠，强烈推荐配置好ACCESS_TOKEN再使用，示例：
+
+```python
+HOST = '0.0.0.0'  # 开放公网访问使用此条配置（不安全）
+PORT = 8080
+ACCESS_TOKEN: '' # 需要和gocqhttp配置的access-token相同
+```
+
+- 没有公网IP，请直接在bot运行的计算机上使用localhost+端口来访问
 
 4.(可选)用户订阅改用sqlite存储，可将目录下的jjcconvert.back改为jjcconvert.py，与binds.json放在同一目录下执行，尝试将公版json绑定信息导入到数据库。
 

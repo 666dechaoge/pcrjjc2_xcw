@@ -1,4 +1,5 @@
 import asyncio
+import socket
 from asyncio import Lock
 from json import load, loads
 from os.path import dirname, join
@@ -27,12 +28,7 @@ admin = hoshino.config.SUPERUSERS[0]
 pro_queue = asyncio.PriorityQueue()
 
 
-def has_port(string):
-    pattern = r":\d+"  # 匹配冒号后面的一个或多个数字（端口号）
-    return re.search(pattern, string) is not None
-
-
-async def get_local_url_head():
+async def get_local_address():
     if hasattr(bot_config, "PUBLIC_ADDRESS") and getattr(bot_config, "PUBLIC_ADDRESS"):
         public_address = getattr(bot_config, 'PUBLIC_ADDRESS')
     elif hasattr(bot_config, "IP") and getattr(bot_config, "IP"):
@@ -42,11 +38,8 @@ async def get_local_url_head():
             res = await (await get(url=f"https://4.ipw.cn", timeout=3)).text
             public_address = f"{res}:{getattr(bot_config, 'PORT')}"
         except:
-            public_address = "获取bot地址失败"
-
-    local_url_head = f"http://{public_address}/geetest" if has_port(public_address) else f"https://{public_address}/geetest"
-
-    return local_url_head
+            public_address = f"localhost:{getattr(bot_config, 'PORT')}"
+    return public_address
 
 
 class Login:
@@ -89,13 +82,24 @@ class Login:
                 userid = args[2]
                 online_url_head = "https://cc004.github.io/geetest/geetest.html"
                 url = f"?captcha_type=1&challenge={challenge}&gt={gt}&userid={userid}&gs=1"
-                print(f'来自{self.no}号客户端的验证:{online_url_head}{url}')
+                online_url = online_url_head + url
+                sv.logger.info(f'来自{self.no}号客户端的验证:{online_url}')
+                if bot_config.HOST == '0.0.0.0':
+                    public_address = await get_local_address()
+                    local_url_head = f"http://{public_address}/geetest"
+                    local_url = local_url_head + url
+                else:
+                    local_url = f"http://localhost:{bot_config.PORT}/geetest" + url
                 try:
                     await send_to_admin(
-                        f'pcr账号登录需要验证码，请在浏览器中打开链接，将验证内容后将第1个方框的内容点击复制，并加上"pcrval {self.no} "前缀发送(空格必须)给机器人完成验证\n'
-                        f'（如果无法使用请检查服务器开放端口或者尝试替换为127.0.0.1）验证链接：{await get_local_url_head()}{url}\n备用链接：{online_url_head}{url}\n示例：pcrval {self.no} 123456789\n您也可以发送 pcrval {self.no} auto 命令bot自动过验证码')
-                except:
-                    sv.logger.critical(f'发送pcr登录验证码链接{await get_local_url_head()}{url}至管理员失败')
+                        f'pcr账号登录需要验证码，请在浏览器中打开链接，'
+                        f'将验证内容后将第1个方框的内容点击复制，并加上"pcrval {self.no} "前缀发送(空格必须)给机器人完成验证\n'
+                        f'（有公网IP但是无法访问插件自带链接请检查服务器是否开放端口,显示地址为localhost的请在bot运行的计算机上打开）'
+                        f'插件自带链接：{local_url}\n'
+                        f'备用公共链接：{online_url}\n'
+                        f'示例：pcrval {self.no} 123456789\n您也可以发送 pcrval {self.no} auto 命令bot自动过验证码')
+                except Exception as e:
+                    sv.logger.critical(e)
                 await self.captcha_lck.acquire()
                 self.validating = False
                 return self.validate
