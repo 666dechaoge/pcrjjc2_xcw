@@ -1,18 +1,17 @@
 import asyncio
-import socket
 from asyncio import Lock
 from json import load, loads
 from os.path import dirname, join
+
+import hoshino
+from hoshino import config as bot_config
 from nonebot import get_bot, on_command
 
-import re
-import hoshino
-from .aiorequests import post, get
+from .aiorequests import get
 from .jjcbinds import JJCBindsStorage
 from .pcrclient import pcrclient, bsdkclient, ApiException
 from .service import sv
 from .util import send_to_admin
-from hoshino import config as bot_config
 
 bot = get_bot()
 JJCB = JJCBindsStorage()
@@ -91,6 +90,7 @@ class Login:
                 else:
                     local_url = f"http://localhost:{bot_config.PORT}/geetest" + url
                 try:
+                    await asyncio.sleep(5)
                     await send_to_admin(
                         f'pcr账号登录需要验证码，请在浏览器中打开链接，'
                         f'将验证内容后将第1个方框的内容点击复制，并加上"pcrval {self.no} "前缀发送(空格必须)给机器人完成验证\n'
@@ -125,7 +125,7 @@ class Login:
                         tim = min(int(nu), 3) * 5
                         print(f"sleep={tim}")
                         await asyncio.sleep(tim)
-                else:
+                    else:
                         info = res["info"]
                         if info in ["fail", "url invalid"]:
                             break
