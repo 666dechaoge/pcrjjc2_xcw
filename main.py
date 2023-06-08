@@ -557,13 +557,17 @@ async def on_arena_schedule():
         if status:
             await send_all_sv_group(sv, "竞技场推送服务已恢复")
     if status:
-        JJCB.refresh()
-        bind_cache = deepcopy(JJCB.bind_cache)
-        for game_id in bind_cache:
-            bind_info = bind_cache[game_id]
-            pro_entity = PriorityEntry(10, (compare, {"game_id": game_id, "bind_info": bind_info}))
-            await pro_queue.put(pro_entity)
-        sv.logger.info(f"query started for {len(bind_cache)} users!")
+        if pro_queue.empty():
+            JJCB.refresh()
+            bind_cache = deepcopy(JJCB.bind_cache)
+            for game_id in bind_cache:
+                bind_info = bind_cache[game_id]
+                pro_entity = PriorityEntry(10, (compare, {"game_id": game_id, "bind_info": bind_info}))
+                await pro_queue.put(pro_entity)
+            sv.logger.info(f"成功添加{len(bind_cache)}个任务")
+        else:
+            size = pro_queue.qsize()
+            sv.logger.warning(f"警告，还有{size}个任务等待处理，放弃添加，请检查是否有客户端出现异常，频繁出现此提示请增加客户端数量或者降低查询频率")
 
 
 @sv.scheduled_job('interval', minutes=15)
