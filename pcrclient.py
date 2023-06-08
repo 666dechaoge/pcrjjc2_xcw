@@ -13,7 +13,7 @@ from dateutil.parser import parse
 from os.path import dirname, join, exists
 from .service import sv
 
-apiroot = 'https://l3-prod-all-gs-gzlj.bilibiligame.net'
+apiroot = 'https://le1-prod-all-gs-gzlj.bilibiligame.net'
 curpath = dirname(__file__)
 config = join(curpath, 'version.txt')
 defaultHeaders = {
