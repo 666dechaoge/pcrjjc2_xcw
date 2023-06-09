@@ -647,14 +647,14 @@ async def get_fre_list(bot, ev):
                 msg += "无记录\n"
             else:
                 for jjc_fre_id in jjc_fre_cache:
-                    msg += jjc_fre_id + "\n"
+                    msg += str(jjc_fre_id) + "\n"
             msg += "pjjc风控列表：\n"
             if not pjjc_fre_cache:
                 msg += "无记录\n"
             else:
                 for pjjc_fre_id in pjjc_fre_cache:
-                    msg += pjjc_fre_id + "\n"
-            msg += "查询完毕"
+                    msg += str(pjjc_fre_id) + "\n"
+            msg += "============="
     await bot.send(ev, msg)
 
 
