@@ -883,6 +883,45 @@ async def send_sub_config(session: CommandSession):
     await session.finish(msg)
 
 
+@on_command('jjc用户查询', only_to_me=False, permission=perm.SUPERUSER)
+async def send_sub_user(session: CommandSession):
+    args = session.current_arg_text.split()
+    if len(args) == 1:
+        group_id = str(args[0])
+        bind_list = JJCB.select_by_group_id(group_id)
+        if not bind_list:
+            msg = '该群无人订阅'
+        else:
+            msg_list = []
+            bind_lite = {}
+            err_user_list = []
+            for bind in bind_list:
+                uid = bind['user_id']
+                bind_lite.setdefault(uid, {
+                    'user_id': uid,
+                    'game_ids': []
+                })['game_ids'].append(bind['game_id'])
+            sorted_list = list(bind_lite.values())
+            try:
+                group_name = await get_group_name(group_id=group_id)
+            except:
+                await session.send(f'群{group_id}状态异常，请检查是否还有bot在该群聊')
+                return
+            for user_bind in sorted_list:
+                try:
+                    user_name = await get_user_name(user_id=user_bind["user_id"], group_id=group_id)
+                    msg_list.append(f"{user_bind['user_id']} {user_name} {len(user_bind['game_ids'])}个订阅\n")
+                except:
+                    err_user_list.append(f"{user_bind['user_id']} {len(user_bind['game_ids'])}个订阅\n")
+            group_msg = f'查询完毕，{group_id} {group_name}，有{len(sorted_list)}个用户'
+            msg = ''.join(msg_list) + group_msg
+            if err_user_list:
+                msg = msg + ''.join(err_user_list) + f"用户状态异常，请检查他们是否还在群聊{group_name}中"
+        await session.send(msg)
+    else:
+        await session.send("参数有误")
+
+
 # 被踢或者退群自动删除相关订阅
 @sv.on_notice('group_decrease.leave', 'group_decrease.kick', 'group_decrease.kick_me')
 async def leave_notice(session: NoticeSession):
@@ -927,6 +966,70 @@ async def clean_sub_invalid(session: CommandSession):
     await session.finish(msg)
 
 
+# 清理非活跃用户配置
+@on_command('jjc睡眠清理', only_to_me=False, permission=perm.SUPERUSER)
+async def clean_sub_inactive(session: CommandSession):
+    args = session.current_arg_text.split()
+    if len(args) == 1:
+        try:
+            limit_rank = int(args[0])
+            if limit_rank < 50:
+                await session.send("名次至少要大于等于50")
+                return
+        except Exception as e:
+            sv.logger.error(e)
+            await session.send('名次输入有误')
+            return
+        if get_avail():
+            await session.send(f'开始查询并清理双场名次大于{limit_rank}的用户')
+            JJCB.refresh()
+            bind_cache = deepcopy(JJCB.bind_cache)
+            for game_bind in bind_cache:
+                info = bind_cache[game_bind]
+                pro_entity = PriorityEntry(5, (
+                    sleep_clean,
+                    {"game_id": game_bind, "bind_info": info, "limit_rank": limit_rank, "session": session}))
+                await pro_queue.put(pro_entity)
+        else:
+            await session.send("jjc服务不可用")
+    else:
+        await session.send("参数有误")
+
+
+async def sleep_clean(resall, info, limit_rank, session):
+    game_id = info['game_id']
+    group_id = info['group_id']
+    user_id = info['user_id']
+    try:
+        # resall = await queryall(game_id)
+        res = resall['user_info']
+        res = (
+            res['arena_rank'], res['grand_arena_rank'], res['last_login_time'], res['user_name'],
+            res['viewer_id'])
+        if res[0] > limit_rank and res[1] > limit_rank:
+            delete_game_bind(game_id)
+            await session.send(f'群:{group_id}的QQ:{user_id}竞技场推送订阅{game_id}被删除了')
+            await send_to_group(group_id=int(group_id),
+                                message=f'[CQ:at,qq={user_id}]您绑定的昵称为{res[3]}账号的双场排名均大于{limit_rank},已删除您的订阅')
+            # n = n + 1
+    except CQHttpError as c:
+        sv.logger.error(c)
+        try:
+            user_name = await get_user_name(user_id, group_id)
+            group_name = await get_group_name(group_id)
+            sv.logger.error(
+                f'群:{group_id} {group_name}的{user_id} {user_name}竞技场清理推送错误{c}')
+            await send_to_admin(f'{group_id} {group_name}的{user_id} {user_name}竞技场清理推送错误{c}')
+        except Exception as e:
+            sv.logger.critical(f'向管理员进行竞技场清理错误报告时发生错误{e}')
+    except Exception as e:
+        sv.logger.error(f'对{info["id"]}的检查出错:{e}')
+
+
+# loop = asyncio.get_event_loop()
+# loop.run_until_complete(check_frequent())
+
+
 @on_command('jjcset', aliases='jjc设置', only_to_me=False, permission=perm.SUPERUSER)
 async def jjcset(session: CommandSession):
     global avail_notify, fre_detect, bind_limit, bind_share
@@ -947,13 +1050,15 @@ async def jjcset(session: CommandSession):
                     if jjc_fre_cache:
                         msg += "jjc：\n"
                         for jjc_fre_id in jjc_fre_cache:
-                            msg += jjc_fre_id + "\n"
+                            msg += str(jjc_fre_id) + "\n"
                         await fre_bind_switch(jjc_fre_cache, 'jjc', True, auto=False)
+                        jjc_fre_cache.clear()
                     if pjjc_fre_cache:
                         msg += "pjjc：\n"
                         for pjjc_fre_id in pjjc_fre_cache:
-                            msg += pjjc_fre_id + "\n"
+                            msg += str(pjjc_fre_id) + "\n"
                         await fre_bind_switch(pjjc_fre_cache, 'pjjc', True, auto=False)
+                        pjjc_fre_cache.clear()
             else:
                 msg = "可设置值:\n" \
                       "(on)开启\n" \

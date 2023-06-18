@@ -223,6 +223,11 @@ class Login:
                     await method(resall, self.no, values['bind_info'])
                 except Exception as e:
                     sv.logger.critical(e)
+            elif method_name == 'sleep_clean':
+                try:
+                    await method(resall, values['bind_info'], values['limit_rank'], values['session'])
+                except Exception as e:
+                    sv.logger.critical(e)
             else:
                 continue
 
