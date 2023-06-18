@@ -288,13 +288,13 @@ for ac_info in acinfos:
     no += 1
 
 
-def get_avali():
-    avali = False
+def get_avail():
+    avail = False
     for inst in inst_list:
         if inst.avail:
-            avali = True
+            avail = True
             break
-    return avali
+    return avail
 
 
 # 客户端出错，手动登录
