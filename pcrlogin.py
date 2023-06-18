@@ -49,7 +49,7 @@ class Login:
         self.validate = None  # 验证码或者验证方式信息，与auto,captcha_verifier有关
         self.validating = False  # 验证状态
         self.ac_first = False
-        self.auto = False  # 验证方式
+        self.auto = True  # 验证方式
         self.captcha_cnt = 0  # 自动过验证码尝试次数
 
         self.client = pcrclient(bsdkclient(self.ac_info, self.captcha_verifier, self.errlogger))
