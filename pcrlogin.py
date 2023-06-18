@@ -223,6 +223,11 @@ class Login:
                     await method(resall, self.no, values['bind_info'])
                 except Exception as e:
                     sv.logger.critical(e)
+            elif method_name == 'sleep_clean':
+                try:
+                    await method(resall, values['bind_info'], values['limit_rank'], values['session'])
+                except Exception as e:
+                    sv.logger.critical(e)
             else:
                 continue
 
@@ -288,13 +293,13 @@ for ac_info in acinfos:
     no += 1
 
 
-def get_avali():
-    avali = False
+def get_avail():
+    avail = False
     for inst in inst_list:
         if inst.avail:
-            avali = True
+            avail = True
             break
-    return avali
+    return avail
 
 
 # 客户端出错，手动登录

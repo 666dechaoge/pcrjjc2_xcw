@@ -3,13 +3,16 @@ from copy import deepcopy
 from itertools import groupby
 from operator import itemgetter
 
-from hoshino import priv
+from hoshino.typing import CQHttpError
 from hoshino.typing import NoticeSession, MessageSegment
 from hoshino.util import pic2b64
+from nonebot import on_command, CommandSession
+from nonebot import permission as perm
+
 from .create_img import generate_info_pic, generate_support_pic
 from .jjcbinds import *
 from .jjchistory import *
-from .pcrlogin import pro_queue, get_avali
+from .pcrlogin import pro_queue, get_avail
 from .service import sv
 from .util import *
 
@@ -22,6 +25,11 @@ detail_cache = {}  # 详细查询信息缓存
 jjc_fre_cache = set()
 pjjc_fre_cache = set()
 fre_lock = asyncio.Lock()
+
+avail_notify = 'admin'  # bot状态通知渠道 admin broad off，默认admin
+fre_detect = True  # 击剑风控开关，默认开启
+bind_limit = 3  # 最大绑定数限制，默认为3
+bind_share = True  # 订阅分享功能，@群友查询群友排名
 
 status = True
 # 数据库对象初始化
@@ -71,8 +79,8 @@ async def on_arena_bind(bot, ev):
     group_id = str(ev['group_id'])
     try:
         result_list_user = JJCB.select_by_user_id(user_id)
-        if len(result_list_user) >= 3:
-            await bot.send(ev, "最多可以绑定三个游戏ID！")
+        if len(result_list_user) >= bind_limit:
+            await bot.send(ev, f"最多可以绑定{bind_limit}个游戏ID！")
             return
         a_game_bind = JJCB.select_by_game_id(game_id)
         if a_game_bind:
@@ -108,27 +116,34 @@ async def on_arena_bind(bot, ev):
 
 # 获取查询目标
 def get_query_uid(ev):
+    share_reject = False
     if len(ev.message) == 1 and ev.message[0].type == 'text' and not ev.message[0].data['text']:
         user_id = str(ev['user_id'])
         print(f"查询自己{user_id}")
-    # 群友代查功能，可选
     elif ev.message[0].type == 'at' and ev.message[0].data['qq'] != 'all':
-        user_id = str(ev.message[0].data['qq'])
-        print(f"代查他人{user_id}")
+        if bind_share:
+            user_id = str(ev.message[0].data['qq'])
+            print(f"代查群友{user_id}")
+        else:
+            user_id = str(ev['user_id'])
+            share_reject = True
+            print(f"未开启订阅分享")
     else:
         user_id = str(ev['user_id'])
-    return user_id
+    return user_id, share_reject
 
 
 # 竞技场查询
 @sv.on_prefix('竞技场查询')
 async def on_query_arena(bot, ev):
-    user_id = get_query_uid(ev)
+    user_id, share_reject = get_query_uid(ev)
+    if share_reject:
+        await bot.send(ev, "未开启订阅分享，只能查询自己")
     num, subs = get_user_sub(user_id)
     if num == 0:
         await send_user_no_bind(bot, ev)
         return
-    if get_avali():
+    if get_avail():
         n = 0
         for bind in subs:
             game_id = bind['game_id']
@@ -161,7 +176,7 @@ async def query_rank(res_all, no, game_id, user_id, ev, n):
 async def on_query_arena_id(bot, ev):
     robj = ev['match']
     game_id = robj.group(1)
-    if get_avali():
+    if get_avail():
         if not game_id:
             await bot.finish(ev, '请在指令后跟13位游戏id', at_sender=True)
         elif len(game_id) != 13:
@@ -230,7 +245,9 @@ def delete_group_bind(group_id: str):
               '查询竞技场绑定',
               '查询竞技场订阅', '查询竞技场列表', )
 async def query_binds(bot, ev):
-    user_id = get_query_uid(ev)
+    user_id, share_reject = get_query_uid(ev)
+    if share_reject:
+        await bot.send(ev, "未开启订阅分享，只能查询自己的信息")
     num, subs = get_user_sub(user_id)
     if num == 0:
         await send_user_no_bind(bot, ev)
@@ -497,7 +514,9 @@ async def change_notice_rank(bot, ev):
 # 竞技场历史
 @sv.on_prefix('竞技场历史')
 async def send_arena_history(bot, ev):
-    user_id = get_query_uid(ev)
+    user_id, share_reject = get_query_uid(ev)
+    if share_reject:
+        await bot.send(ev, "未开启订阅分享，只能查询自己")
     result_list_by_user = JJCB.select_by_user_id(user_id)
     if not result_list_by_user:
         await send_user_no_bind(bot, ev)
@@ -522,7 +541,9 @@ async def send_arena_history(bot, ev):
 
 @sv.on_prefix('公主竞技场历史')
 async def send_parena_history(bot, ev):
-    user_id = get_query_uid(ev)
+    user_id, share_reject = get_query_uid(ev)
+    if share_reject:
+        await bot.send(ev, "未开启订阅分享，只能查询自己")
     result_list_by_user = JJCB.select_by_user_id(user_id)
     if not result_list_by_user:
         await send_user_no_bind(bot, ev)
@@ -550,12 +571,25 @@ async def send_parena_history(bot, ev):
 async def on_arena_schedule():
     global status
     last_status = status
-    status = get_avali()
-    if last_status != status:
-        if not status:
-            await send_all_sv_group(sv, "竞技场推送服务不可用，可能是服务器正在维护或者所有bot账号登录出现问题")
-        if status:
-            await send_all_sv_group(sv, "竞技场推送服务已恢复")
+    status = get_avail()
+    if avail_notify != 'off':
+        if last_status != status:
+            if not status:
+                msg = "竞技场推送服务不可用，可能是服务器正在维护或者所有bot账号登录出现问题"
+                if avail_notify == 'broad':
+                    await send_sv_group(sv, msg)
+                elif avail_notify == 'admin':
+                    await send_to_admin(msg)
+                else:
+                    pass
+            if status:
+                msg = "竞技场推送服务已恢复"
+                if avail_notify == 'broad':
+                    await send_sv_group(sv, msg)
+                elif avail_notify == 'admin':
+                    await send_to_admin(msg)
+                else:
+                    pass
     if status:
         if pro_queue.empty():
             JJCB.refresh()
@@ -572,90 +606,83 @@ async def on_arena_schedule():
 
 @sv.scheduled_job('interval', minutes=15)
 async def check_frequent():
-    global jjc_fre_cache, pjjc_fre_cache
-    sv.logger.info(f"start check frequent")
-    async with fre_lock:
-        jjc_fre_last = jjc_fre_cache
-        pjjc_fre_last = pjjc_fre_cache
-        jjc_fre_cache = set(JJCH.recent_jjc_ids())
-        pjjc_fre_cache = set(JJCH.recent_pjjc_ids())
-    # 需要解除风控集
-    jjc_fre_release = jjc_fre_last - jjc_fre_cache
-    pjjc_fre_release = pjjc_fre_last - pjjc_fre_cache
-    # 新的风控集合
-    jjc_fre_new = jjc_fre_cache - jjc_fre_last
-    pjjc_fre_new = pjjc_fre_cache - pjjc_fre_last
-    if jjc_fre_new:
-        sv.logger.info(f"new frequent jjc:{jjc_fre_new}")
-        for game_id in jjc_fre_new:
-            a_game_bind = JJCB.select_by_game_id(game_id)
-            if a_game_bind:
-                bind = a_game_bind[0]
-                bind['arena'] = 0
-                group_id = bind['group_id']
-                user_id = bind['user_id']
-                JJCB.update(bind)
-                msg = f"[CQ:at,qq={user_id}]XCW检测到您绑定的游戏ID{game_id}在15分钟内记录过于频繁，已暂时关闭该ID的竞技场推送，XCW仍会记录变化历史，待下次检测正常后自动恢复，您也可以按照帮助手动开启"
-                await send_to_group(group_id=int(group_id), message=msg)
-    if pjjc_fre_new:
-        sv.logger.info(f"new frequent pjjc:{pjjc_fre_new}")
-        for game_id in pjjc_fre_new:
-            a_game_bind = JJCB.select_by_game_id(game_id)
-            if a_game_bind:
-                bind = a_game_bind[0]
-                bind['grand_arena'] = 0
-                group_id = bind['group_id']
-                user_id = bind['user_id']
-                JJCB.update(bind)
-                msg = f"[CQ:at,qq={user_id}]XCW检测到您绑定的游戏ID{game_id}在15分钟内记录过于频繁，已暂时关闭该ID的公主竞技场推送，XCW仍会记录变化历史，待下次检测正常后自动恢复，您也可以按照帮助手动开启"
-                await send_to_group(group_id=int(group_id), message=msg)
-    if jjc_fre_release:
-        sv.logger.info(f"release frequent jjc:{jjc_fre_release}")
-        for game_id in jjc_fre_release:
-            a_game_bind = JJCB.select_by_game_id(game_id)
-            if a_game_bind:
-                bind = a_game_bind[0]
-                bind['arena'] = 1
-                group_id = bind['group_id']
-                user_id = bind['user_id']
-                JJCB.update(bind)
-                msg = f"[CQ:at,qq={user_id}]XCW检测到您绑定的游戏ID{game_id}在15分钟内记录恢复正常，已自动开启该ID的竞技场订阅"
-                await send_to_group(group_id=int(group_id), message=msg)
-    if pjjc_fre_release:
-        sv.logger.info(f"release frequent pjjc:{pjjc_fre_release}")
-        for game_id in pjjc_fre_release:
-            a_game_bind = JJCB.select_by_game_id(game_id)
-            if a_game_bind:
-                bind = a_game_bind[0]
-                bind['grand_arena'] = 1
-                group_id = bind['group_id']
-                user_id = bind['user_id']
-                JJCB.update(bind)
-                msg = f"[CQ:at,qq={user_id}]XCW检测到您绑定的游戏ID{game_id}在15分钟内记录恢复正常，已自动开启该ID的公主竞技场订阅"
-                await send_to_group(group_id=int(group_id), message=msg)
-
-
-@sv.on_fullmatch('jjc风控列表')
-async def get_fre_list(bot, ev):
-    is_su = priv.check_priv(ev, priv.SUPERUSER)
-    if not is_su:
-        msg = '需要超级用户权限'
-    else:
+    if fre_detect:
+        global jjc_fre_cache, pjjc_fre_cache
+        sv.logger.info(f"start check frequent")
         async with fre_lock:
-            msg = "jjc风控列表：\n"
-            if not jjc_fre_cache:
-                msg += "无记录\n"
+            jjc_fre_last = jjc_fre_cache
+            pjjc_fre_last = pjjc_fre_cache
+            jjc_fre_cache = set(JJCH.recent_jjc_ids())
+            pjjc_fre_cache = set(JJCH.recent_pjjc_ids())
+        # 需要解除风控集
+        jjc_fre_release = jjc_fre_last - jjc_fre_cache
+        pjjc_fre_release = pjjc_fre_last - pjjc_fre_cache
+        # 新的风控集合
+        jjc_fre_new = jjc_fre_cache - jjc_fre_last
+        pjjc_fre_new = pjjc_fre_cache - pjjc_fre_last
+        if jjc_fre_new:
+            await fre_bind_switch(jjc_fre_new, 'jjc', False)
+        if pjjc_fre_new:
+            await fre_bind_switch(pjjc_fre_new, 'pjjc', False)
+        if jjc_fre_release:
+            await fre_bind_switch(jjc_fre_release, 'jjc', True)
+        if pjjc_fre_release:
+            await fre_bind_switch(pjjc_fre_release, 'pjjc', True)
+    else:
+        pass
+
+
+async def fre_bind_switch(fre_list: set, jjc_type, turn_on: bool, auto=True):
+    sv.logger.info(f"fre_bind_switch\n"
+                   f"{'release' if turn_on else 'restrict'} type:{jjc_type}\n"
+                   f"{fre_list}")
+    for game_id in fre_list:
+        a_game_bind = JJCB.select_by_game_id(game_id)
+        if a_game_bind:
+            bind = a_game_bind[0]
+            group_id = bind['group_id']
+            user_id = bind['user_id']
+            msg = ''
+            if jjc_type == "pjjc":
+                if turn_on:
+                    bind['grand_arena'] = 1
+                    msg = f"[CQ:at,qq={user_id}]XCW检测到您绑定的游戏ID{game_id}在15分钟内记录恢复正常，已自动开启该ID的公主竞技场订阅" \
+                        if auto else f"[CQ:at,qq={user_id}]XCW已为您开启游戏ID{game_id}的公主竞技场订阅"
+                else:
+                    bind['grand_arena'] = 0
+                    msg = f"[CQ:at,qq={user_id}]XCW检测到您绑定的游戏ID{game_id}在15分钟内记录过于频繁，已暂时关闭该ID的公主竞技场推送，XCW仍会记录变化历史，待下次检测正常后自动恢复，您也可以按照帮助手动开启"
+            elif jjc_type == "jjc":
+                if turn_on:
+                    bind['arena'] = 1
+                    msg = f"[CQ:at,qq={user_id}]XCW检测到您绑定的游戏ID{game_id}在15分钟内记录恢复正常，已自动开启该ID的竞技场订阅" \
+                        if auto else f"[CQ:at,qq={user_id}]XCW已为您开启游戏ID{game_id}的竞技场订阅"
+                else:
+                    bind['arena'] = 0
+                    msg = f"[CQ:at,qq={user_id}]XCW检测到您绑定的游戏ID{game_id}在15分钟内记录过于频繁，已暂时关闭该ID的竞技场推送，XCW仍会记录变化历史，待下次检测正常后自动恢复，您也可以按照帮助手动开启"
             else:
-                for jjc_fre_id in jjc_fre_cache:
-                    msg += str(jjc_fre_id) + "\n"
-            msg += "pjjc风控列表：\n"
-            if not pjjc_fre_cache:
-                msg += "无记录\n"
-            else:
-                for pjjc_fre_id in pjjc_fre_cache:
-                    msg += str(pjjc_fre_id) + "\n"
-            msg += "============="
-    await bot.send(ev, msg)
+                pass
+            JJCB.update(bind)
+            if msg != '':
+                await send_to_group(group_id=int(group_id), message=msg)
+
+
+@on_command('jjc风控列表', only_to_me=False, permission=perm.SUPERUSER)
+async def get_fre_list(session: CommandSession):
+    async with fre_lock:
+        msg = "jjc风控列表：\n"
+        if not jjc_fre_cache:
+            msg += "无记录\n"
+        else:
+            for jjc_fre_id in jjc_fre_cache:
+                msg += str(jjc_fre_id) + "\n"
+        msg += "pjjc风控列表：\n"
+        if not pjjc_fre_cache:
+            msg += "无记录\n"
+        else:
+            for pjjc_fre_id in pjjc_fre_cache:
+                msg += str(pjjc_fre_id) + "\n"
+        msg += "============="
+    await session.send(msg)
 
 
 async def compare(resall, no, bind_info):
@@ -803,67 +830,96 @@ async def compare(resall, no, bind_info):
         sv.logger.critical(err_msg)
 
 
-# 相关信息统计
-@sv.on_fullmatch('jjc状态统计')
-async def send_sub_group(bot, ev):
-    is_su = priv.check_priv(ev, priv.SUPERUSER)
+# 相关信息查询
+@on_command('jjc状态查询', only_to_me=False, permission=perm.SUPERUSER)
+async def send_sub_group(session: CommandSession):
     gl = sv.enable_group
     dgl = sv.disable_group
-    if not is_su:
-        msg = '需要超级用户权限'
-        await bot.send(ev, msg)
-    else:
-        e_group_list = []
-        for eg in gl:
+    e_group_list = []
+    for eg in gl:
+        try:
+            e_group_list.append(str(eg) + " " + await get_group_name(group_id=eg) + "\n")
+        except:
+            await session.send(f'群{eg}状态异常')
+    msg_e = f"{''.join(e_group_list)}共{len(gl)}个群为启用状态"
+    d_group_list = []
+    for dg in dgl:
+        try:
+            d_group_list.append(str(dg) + " " + await get_group_name(group_id=dg) + "\n")
+        except:
+            await session.send(f'群{dg}状态异常')
+    msg_d = f"{''.join(d_group_list)}共{len(dgl)}个群为禁用状态"
+    await session.finish(msg_e + "\n" + msg_d)
+
+
+@on_command('jjc群查询', only_to_me=False, permission=perm.SUPERUSER)
+async def send_sub_config(session: CommandSession):
+    bind_list = JJCB.select_all()
+    bind_lite = {}
+    for bind in bind_list:
+        gid, uid = bind['group_id'], bind['user_id']
+        bind_lite.setdefault(gid + uid, {
+            'group_id': gid,
+            'user_id': uid,
+            'game_ids': []
+        })['game_ids'].append(bind['game_id'])
+    sorted_list = list(bind_lite.values())
+    sorted_list.sort(key=itemgetter('group_id'))
+    sorted_list_groupby = groupby(sorted_list, itemgetter('group_id'))
+    group_msg = []
+    n = 0
+    for gid, subs in sorted_list_groupby:
+        try:
+            group_name = await get_group_name(group_id=gid)
+            sub_list = list(subs)
+            j = 0
+            for sub in sub_list:
+                j = j + len(sub['game_ids'])
+            group_msg.append(f'{gid} {group_name}，{len(sub_list)}个用户，{j}个订阅\n')
+            n = n + 1
+        except Exception as e:
+            sv.logger.error(e)
+    msg = f"{''.join(group_msg)}共{n}个群，{len(JJCB.bind_cache)}个订阅"
+    await session.finish(msg)
+
+
+@on_command('jjc用户查询', only_to_me=False, permission=perm.SUPERUSER)
+async def send_sub_user(session: CommandSession):
+    args = session.current_arg_text.split()
+    if len(args) == 1:
+        group_id = str(args[0])
+        bind_list = JJCB.select_by_group_id(group_id)
+        if not bind_list:
+            msg = '该群无人订阅'
+        else:
+            msg_list = []
+            bind_lite = {}
+            err_user_list = []
+            for bind in bind_list:
+                uid = bind['user_id']
+                bind_lite.setdefault(uid, {
+                    'user_id': uid,
+                    'game_ids': []
+                })['game_ids'].append(bind['game_id'])
+            sorted_list = list(bind_lite.values())
             try:
-                e_group_list.append(str(eg) + " " + await get_group_name(group_id=eg) + "\n")
+                group_name = await get_group_name(group_id=group_id)
             except:
-                await bot.send(ev, f'群{eg}状态异常')
-        msg_e = f"{''.join(e_group_list)}共{len(gl)}个群为启用状态"
-        d_group_list = []
-        for dg in dgl:
-            try:
-                d_group_list.append(str(dg) + " " + await get_group_name(group_id=dg) + "\n")
-            except:
-                await bot.send(ev, f'群{dg}状态异常')
-        msg_d = f"{''.join(d_group_list)}共{len(dgl)}个群为禁用状态"
-        await bot.send(ev, msg_e + "\n" + msg_d)
-
-
-@sv.on_fullmatch('jjc群统计')
-async def send_sub_config(bot, ev):
-    is_su = priv.check_priv(ev, priv.SUPERUSER)
-    if not is_su:
-        msg = '需要超级用户权限'
+                await session.send(f'群{group_id}状态异常，请检查是否还有bot在该群聊')
+                return
+            for user_bind in sorted_list:
+                try:
+                    user_name = await get_user_name(user_id=user_bind["user_id"], group_id=group_id)
+                    msg_list.append(f"{user_bind['user_id']} {user_name} {len(user_bind['game_ids'])}个订阅\n")
+                except:
+                    err_user_list.append(f"{user_bind['user_id']} {len(user_bind['game_ids'])}个订阅\n")
+            group_msg = f'查询完毕，{group_id} {group_name}，有{len(sorted_list)}个用户'
+            msg = ''.join(msg_list) + group_msg
+            if err_user_list:
+                msg = msg + ''.join(err_user_list) + f"用户状态异常，请检查他们是否还在群聊{group_name}中"
+        await session.send(msg)
     else:
-        bind_list = JJCB.select_all()
-        bind_lite = {}
-        for bind in bind_list:
-            gid, uid = bind['group_id'], bind['user_id']
-            bind_lite.setdefault(gid + uid, {
-                'group_id': gid,
-                'user_id': uid,
-                'game_ids': []
-            })['game_ids'].append(bind['game_id'])
-        sorted_list = list(bind_lite.values())
-        sorted_list.sort(key=itemgetter('group_id'))
-        sorted_list_groupby = groupby(sorted_list, itemgetter('group_id'))
-        group_msg = []
-        n = 0
-        for gid, subs in sorted_list_groupby:
-            try:
-                group_name = await get_group_name(group_id=gid)
-                sub_list = list(subs)
-                j = 0
-                for sub in sub_list:
-                    j = j + len(sub['game_ids'])
-                group_msg.append(f'{gid} {group_name}，{len(sub_list)}个用户，{j}个订阅\n')
-                n = n + 1
-            except Exception as e:
-                sv.logger.error(e)
-        msg = f"{''.join(group_msg)}共{n}个群，{len(JJCB.bind_cache)}个订阅"
-    await bot.send(ev, msg)
-
+        await session.send("参数有误")
 
 
 # 被踢或者退群自动删除相关订阅
@@ -891,24 +947,169 @@ async def leave_notice(session: NoticeSession):
 
 
 # 清理无效用户配置
-@sv.on_fullmatch('jjc无效清理')
-async def clean_sub_invalid(bot, ev):
-    is_su = priv.check_priv(ev, priv.SUPERUSER)
-    if not is_su:
-        msg = '需要超级用户权限'
+@on_command('jjc无效清理', only_to_me=False, permission=perm.SUPERUSER)
+async def clean_sub_invalid(session: CommandSession):
+    egl = sv.enable_group
+    gl_ids = await get_all_group_list()
+    n = 0
+    msg_list = []
+    group_list = JJCB.select_group()
+    for result in group_list:
+        gid = result['group_id']
+        a = int(gid) not in egl
+        b = int(gid) not in gl_ids
+        if a or b:
+            n = n + 1
+            delete_group_bind(gid)
+            msg_list.append(f'{gid} ')
+    msg = ''.join(msg_list) + f"\n清理完毕，清理了{n}个失效群的订阅"
+    await session.finish(msg)
+
+
+# 清理非活跃用户配置
+@on_command('jjc睡眠清理', only_to_me=False, permission=perm.SUPERUSER)
+async def clean_sub_inactive(session: CommandSession):
+    args = session.current_arg_text.split()
+    if len(args) == 1:
+        try:
+            limit_rank = int(args[0])
+            if limit_rank < 50:
+                await session.send("名次至少要大于等于50")
+                return
+        except Exception as e:
+            sv.logger.error(e)
+            await session.send('名次输入有误')
+            return
+        if get_avail():
+            await session.send(f'开始查询并清理双场名次大于{limit_rank}的用户')
+            JJCB.refresh()
+            bind_cache = deepcopy(JJCB.bind_cache)
+            for game_bind in bind_cache:
+                info = bind_cache[game_bind]
+                pro_entity = PriorityEntry(5, (
+                    sleep_clean,
+                    {"game_id": game_bind, "bind_info": info, "limit_rank": limit_rank, "session": session}))
+                await pro_queue.put(pro_entity)
+        else:
+            await session.send("jjc服务不可用")
     else:
-        egl = sv.enable_group
-        gl_ids = await get_all_group_list()
-        n = 0
-        msg_list = []
-        group_list = JJCB.select_group()
-        for result in group_list:
-            gid = result['group_id']
-            a = int(gid) not in egl
-            b = int(gid) not in gl_ids
-            if a or b:
-                n = n + 1
-                delete_group_bind(gid)
-                msg_list.append(f'{gid} ')
-        msg = ''.join(msg_list) + f"\n清理完毕，清理了{n}个失效群的订阅"
-    await bot.send(ev, msg)
+        await session.send("参数有误")
+
+
+async def sleep_clean(resall, info, limit_rank, session):
+    game_id = info['game_id']
+    group_id = info['group_id']
+    user_id = info['user_id']
+    try:
+        # resall = await queryall(game_id)
+        res = resall['user_info']
+        res = (
+            res['arena_rank'], res['grand_arena_rank'], res['last_login_time'], res['user_name'],
+            res['viewer_id'])
+        if res[0] > limit_rank and res[1] > limit_rank:
+            delete_game_bind(game_id)
+            await session.send(f'群:{group_id}的QQ:{user_id}竞技场推送订阅{game_id}被删除了')
+            await send_to_group(group_id=int(group_id),
+                                message=f'[CQ:at,qq={user_id}]您绑定的昵称为{res[3]}账号的双场排名均大于{limit_rank},已删除您的订阅')
+            # n = n + 1
+    except CQHttpError as c:
+        sv.logger.error(c)
+        try:
+            user_name = await get_user_name(user_id, group_id)
+            group_name = await get_group_name(group_id)
+            sv.logger.error(
+                f'群:{group_id} {group_name}的{user_id} {user_name}竞技场清理推送错误{c}')
+            await send_to_admin(f'{group_id} {group_name}的{user_id} {user_name}竞技场清理推送错误{c}')
+        except Exception as e:
+            sv.logger.critical(f'向管理员进行竞技场清理错误报告时发生错误{e}')
+    except Exception as e:
+        sv.logger.error(f'对{info["id"]}的检查出错:{e}')
+
+
+# loop = asyncio.get_event_loop()
+# loop.run_until_complete(check_frequent())
+
+
+@on_command('jjcset', aliases='jjc设置', only_to_me=False, permission=perm.SUPERUSER)
+async def jjcset(session: CommandSession):
+    global avail_notify, fre_detect, bind_limit, bind_share
+    args = session.current_arg_text.split()
+    if len(args) != 2:
+        msg = "指令格式:jjc设置 设置项 设置值"
+    else:
+        set_item = args[0]
+        set_value = args[1]
+        if set_item in ['击剑风控', 'detect']:
+            if set_value in ['开', '开启', '启用', 'on']:
+                fre_detect = True
+                msg = "击剑风控开启成功，每隔15分钟检测，变化大于5次的用户将被临时关闭订阅"
+            elif set_value in ['关', '关闭', '禁用', 'off']:
+                fre_detect = False
+                async with fre_lock:
+                    msg = "击剑风控关闭成功，同时已解除以下ID订阅限制"
+                    if jjc_fre_cache:
+                        msg += "jjc：\n"
+                        for jjc_fre_id in jjc_fre_cache:
+                            msg += str(jjc_fre_id) + "\n"
+                        await fre_bind_switch(jjc_fre_cache, 'jjc', True, auto=False)
+                        jjc_fre_cache.clear()
+                    if pjjc_fre_cache:
+                        msg += "pjjc：\n"
+                        for pjjc_fre_id in pjjc_fre_cache:
+                            msg += str(pjjc_fre_id) + "\n"
+                        await fre_bind_switch(pjjc_fre_cache, 'pjjc', True, auto=False)
+                        pjjc_fre_cache.clear()
+            else:
+                msg = "可设置值:\n" \
+                      "(on)开启\n" \
+                      "(off)关闭"
+        elif set_item in ['状态通知', 'notify']:
+            if set_value in ['admin', '主人']:
+                avail_notify = 'admin'
+                msg = "设置状态变化为私聊主人成功"
+            elif set_value in ['broad', '广播']:
+                avail_notify = 'broad'
+                msg = "设置状态变化为群聊广播成功"
+            elif set_value in ['关', '关闭', '禁用', 'off']:
+                avail_notify = 'off'
+                msg = "关闭状态变化通知成功"
+            else:
+                msg = "可设置值:\n" \
+                      "(admin)主人\n" \
+                      "(broad)广播\n" \
+                      "(off)关闭"
+        elif set_item in ['绑定数', 'limit']:
+            try:
+                bind_limit = int(set_value)
+                msg = f"设置最大绑定数{bind_limit}成功"
+            except:
+                msg = "设置值非数字，请检查"
+        elif set_item in ['订阅分享', 'share']:
+            if set_value in ['开', '开启', '启用', 'on']:
+                bind_share = True
+                msg = "开启代查成功，@群友查询群友排名信息"
+            elif set_value in ['关', '关闭', '禁用', 'off']:
+                bind_share = False
+                msg = "关闭代查成功，只能查询自己排名信息"
+            else:
+                msg = "可设置值:\n" \
+                      "(on)开启\n" \
+                      "(off)关闭"
+        else:
+            msg = "可设置项:\n" \
+                  "(detect)击剑风控\n" \
+                  "(notify)状态通知\n" \
+                  "(limit)绑定数\n" \
+                  "(share)订阅分享"
+    await session.finish(msg)
+
+
+@on_command('jjcsetstatus', aliases='jjc设置状态', only_to_me=False, permission=perm.SUPERUSER)
+async def jjcsetstatus(session: CommandSession):
+    notify_dict = {"admin": "主人", "broad": "广播", "off": "关闭"}
+    msg_list = ["pcrjjc2设置状态:\n"
+                f"状态通知:{notify_dict[avail_notify]}\n"
+                f"击剑风控:{'开启' if fre_detect else '关闭'}\n"
+                f"限制绑定:{bind_limit}\n"
+                f"同群代查:{'开启' if bind_share else '关闭'}"]
+    session.finish(''.join(msg_list))

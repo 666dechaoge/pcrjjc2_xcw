@@ -141,7 +141,7 @@ async def get_all_group_list():
     return group_list
 
 
-async def send_all_sv_group(sv, message):
+async def send_sv_group(sv, message):
     gl = sv.enable_group
     for g in gl:
         await asyncio.sleep(0.5)
