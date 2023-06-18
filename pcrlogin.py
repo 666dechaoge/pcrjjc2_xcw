@@ -104,26 +104,37 @@ class Login:
                 self.validating = False
                 return self.validate
 
-        while self.captcha_cnt < 3:
+        auto_flag = True
+        while auto_flag:
             self.captcha_cnt += 1
             try:
                 print(f'客户端{self.no}测试新版自动过码中，当前尝试第{self.captcha_cnt}次。')
 
-                await asyncio.sleep(1)
-                uuid = loads(await (await get(url="https://pcrd.tencentbot.top/geetest")).content)["uuid"]
-                print(f'uuid={uuid}')
+                gt = args[0]
+                challenge = args[1]
+                userid = args[2]
 
+                await asyncio.sleep(1)
+                url = f"https://pcrd.tencentbot.top/geetest_renew?captcha_type=1&challenge={challenge}&gt={gt}&userid={userid}&gs=1"
+                header = {"Content-Type": "application/json", "User-Agent": "pcrjjc2/1.0.0"}
+                res = await (await get(url=url, headers=header, timeout=5)).content
+                res = loads(res)
+                uuid = res["uuid"]
+                msg = [f"uuid={uuid}"]
+
+                await asyncio.sleep(10)
                 ccnt = 0
                 while ccnt < 3:
                     ccnt += 1
-                    await asyncio.sleep(5)
-                    res = await (await get(url=f"https://pcrd.tencentbot.top/check/{uuid}")).content
+                    res = await (
+                        await get(url=f"https://pcrd.tencentbot.top/check/{uuid}", headers=header, timeout=5)).content
                     res = loads(res)
                     if "queue_num" in res:
                         nu = res["queue_num"]
-                        print(f"queue_num={nu}")
-                        tim = min(int(nu), 3) * 5
-                        print(f"sleep={tim}")
+                        msg.append(f"queue_num={nu}")
+                        tim = min(int(nu), 3) * 10
+                        msg.append(f"sleep={tim}")
+                        print(f"客户端{self.no}仍在排队等待:\n" + "\n".join(msg))
                         await asyncio.sleep(tim)
                     else:
                         info = res["info"]
@@ -131,17 +142,19 @@ class Login:
                             break
                         elif info == "in running":
                             await asyncio.sleep(5)
-                        else:
-                            print(f'info={info}')
+                        elif 'validate' in info:
+                            print(f'客户端{self.no}:info={info}')
                             self.validating = False
                             return info
-            except:
-                pass
+            except Exception as e:
+                print(e)
+            if self.captcha_cnt >= 3:
+                auto_flag = False
 
-        if self.captcha_cnt >= 3:
+        if not auto_flag:
             self.auto = False
             await send_to_admin(f'客户端{self.no}自动过码多次尝试失败，可能为服务器错误，自动切换为手动。\n'
-                                f'确实服务器无误后，可发送 pcrval {self.no} auto重新触发自动过码。\n'
+                                f'确实服务器无误后，可发送 pcrval {self.no} auto重新触发自动过码。'
                                 f'客户端{self.no}切换至手动')
             self.validating = False
             return "manual"

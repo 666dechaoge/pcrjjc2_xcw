@@ -84,19 +84,19 @@ async def login(bili_account,bili_pwd, make_captch):
         auto = await make_captch()
     except:  # 兼容原版手动过码
         pass
+    cap = await captch()
+    captcha_done = await make_captch(cap['gt'], cap['challenge'], cap['gt_user_id'])  # 验证方法传递3个参数，开始走验证
+
     if auto:
-        cap = await make_captch(True, True)
-        if cap == "manual":
+        if captcha_done == "manual":
             auto = False
         else:
-            login_sta = await login2(bili_account, bili_pwd, cap["challenge"], cap['gt_user_id'], cap['validate'])
+            login_sta = await login2(bili_account, bili_pwd,
+                                     captcha_done["challenge"], captcha_done['gt_user_id'], captcha_done['validate'])
             if "access_key" in login_sta:
-                # 登录成功，次数设置为0
-                await make_captch(0)
+                await make_captch(0)  # 验证方法参数传递1个，将尝试次数归0
             return login_sta
 
     if not auto:
-        cap = await captch()
-        captch_done = await make_captch(cap['gt'], cap['challenge'], cap['gt_user_id'])
-        login_sta = await login2(bili_account, bili_pwd, cap["challenge"], cap['gt_user_id'], captch_done)
+        login_sta = await login2(bili_account, bili_pwd, cap["challenge"], cap['gt_user_id'], captcha_done)
         return login_sta
