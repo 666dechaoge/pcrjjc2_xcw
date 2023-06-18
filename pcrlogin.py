@@ -154,7 +154,7 @@ class Login:
         if not auto_flag:
             self.auto = False
             await send_to_admin(f'客户端{self.no}自动过码多次尝试失败，可能为服务器错误，自动切换为手动。\n'
-                                f'确实服务器无误后，可发送 pcrval {self.no} auto重新触发自动过码。'
+                                f'确实服务器无误后，可发送 pcrval {self.no} auto重新触发自动过码。\n'
                                 f'客户端{self.no}切换至手动')
             self.validating = False
             return "manual"
