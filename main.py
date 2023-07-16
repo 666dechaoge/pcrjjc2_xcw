@@ -424,7 +424,15 @@ async def switch_arena(bot, ev):
         return
     item_key = 'arena' if ev['match'].group(2) is None else 'grand_arena'
     value = 1 if ev['match'].group(1) in ('启用', '开启') else 0
-    await bind_switch(bot, ev, game_id, item_key, value)
+    async with fre_lock:
+        if game_id in jjc_fre_cache and item_key == 'arena':
+            await fre_bind_switch(set(game_id), 'jjc', True if value else False, False)
+            jjc_fre_cache.discard(game_id)
+        elif game_id in pjjc_fre_cache and item_key == 'grand_arena':
+            await fre_bind_switch(set(game_id), 'pjjc', True if value else False, False)
+            pjjc_fre_cache.discard(game_id)
+        else:
+            await bind_switch(bot, ev, game_id, item_key, value)
 
 
 @sv.on_rex(r'^切换(群聊|私聊)$')
@@ -593,7 +601,10 @@ async def on_arena_schedule():
     if status:
         if pro_queue.empty():
             JJCB.refresh()
-            bind_cache = deepcopy(JJCB.bind_cache)
+            all_bind_cache = deepcopy(JJCB.bind_cache)
+            # 过滤掉关闭订阅的群组
+            sv_enable_group_list = [str(item) for item in sv.enable_group]
+            bind_cache = {k: v for k, v in all_bind_cache.items() if v['group_id'] in sv_enable_group_list}
             for game_id in bind_cache:
                 bind_info = bind_cache[game_id]
                 pro_entity = PriorityEntry(10, (compare, {"game_id": game_id, "bind_info": bind_info}))
