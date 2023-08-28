@@ -26,12 +26,13 @@ jjc_fre_cache = set()
 pjjc_fre_cache = set()
 fre_lock = asyncio.Lock()
 
-avail_notify = 'admin'  # bot状态通知渠道 admin broad off，默认admin
+avail_notify = 'broad'  # bot状态变化通知渠道 admin broad off，默认向群组广播
 fre_detect = True  # 击剑风控开关，默认开启
 bind_limit = 3  # 最大绑定数限制，默认为3
 bind_share = True  # 订阅分享功能，@群友查询群友排名
 
-status = True
+status = False
+first_login_success = True
 # 数据库对象初始化
 JJCH = JJCHistoryStorage()
 JJCB = JJCBindsStorage()
@@ -577,20 +578,24 @@ async def send_parena_history(bot, ev):
 # 关键轮询
 @sv.scheduled_job('interval', minutes=0.2)
 async def on_arena_schedule():
-    global status
+    global status, first_login_success
     last_status = status
     status = get_avail()
-    if avail_notify != 'off':
-        if last_status != status:
-            if not status:
-                msg = "竞技场推送服务不可用，可能是服务器正在维护或者所有bot账号登录出现问题"
-                if avail_notify == 'broad':
-                    await send_sv_group(sv, msg)
-                elif avail_notify == 'admin':
-                    await send_to_admin(msg)
-                else:
-                    pass
-            if status:
+    if last_status is not status:
+        if not status:
+            msg = "竞技场推送服务不可用，可能是服务器正在维护或者全部账号登录出现问题"
+            if avail_notify == 'broad':
+                await send_sv_group(sv, msg)
+            elif avail_notify == 'admin':
+                await send_to_admin(msg)
+            else:
+                pass
+        if status:
+            if first_login_success:
+                first_login_success = False
+                msg = "竞技场推送服务开始运行，发送pcrstatus获取详细信息"
+                await send_to_admin(msg)
+            else:
                 msg = "竞技场推送服务已恢复"
                 if avail_notify == 'broad':
                     await send_sv_group(sv, msg)
@@ -1035,11 +1040,6 @@ async def sleep_clean(resall, info, limit_rank, session):
             sv.logger.critical(f'向管理员进行竞技场清理错误报告时发生错误{e}')
     except Exception as e:
         sv.logger.error(f'对{info["id"]}的检查出错:{e}')
-
-
-# loop = asyncio.get_event_loop()
-# loop.run_until_complete(check_frequent())
-
 
 @on_command('jjcset', aliases='jjc设置', only_to_me=False, permission=perm.SUPERUSER)
 async def jjcset(session: CommandSession):

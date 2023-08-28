@@ -109,7 +109,6 @@ class Login:
             self.captcha_cnt += 1
             try:
                 print(f'客户端{self.no}测试新版自动过码中，当前尝试第{self.captcha_cnt}次。')
-
                 gt = args[0]
                 challenge = args[1]
                 userid = args[2]
@@ -167,7 +166,7 @@ class Login:
         # if msg == 'geetest or captcha succeed':
         #     msg = "登录成功"
         try:
-            await send_to_admin(message=f'pcrjjc2登录结果：{msg}')
+            await send_to_admin(message=f'账号{self.ac_info["account"]}登录发生错误：{msg}')
         except:
             sv.logger.critical(f'发送pcr账号登录失败信息至管理员失败')
 
@@ -236,7 +235,7 @@ class Login:
         exceptions = [None]
         while True:
             await self.login_lock.acquire()
-            while self.login_cnt < 5:
+            while self.login_cnt < 3:
                 exceptions = await asyncio.gather(self.client.login(), return_exceptions=True)
                 # 登录正常
                 if exceptions == [None]:
@@ -254,10 +253,10 @@ class Login:
                         pass
                     await asyncio.sleep(5)
 
-            # 5次登录出错不再自动重试，报告admin
-            if self.login_cnt >= 5:
+            # 3次登录出错不再自动重试，报告admin
+            if self.login_cnt >= 3:
                 rep_exc = await asyncio.gather(
-                    send_to_admin(message=f'客户端{self.no}出错{str(exceptions)}超过5次,'
+                    send_to_admin(message=f'客户端{self.no}出错{str(exceptions)}超过3次,'
                                           f'可能为网络错误，确认网络正常后,发送pcrlogin {self.no}重试'),
                     return_exceptions=True)
                 if rep_exc != [None]:
