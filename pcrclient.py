@@ -5,7 +5,7 @@ from json import loads
 from hashlib import md5
 from Crypto.Cipher import AES
 from base64 import b64encode, b64decode
-from .bsgamesdk import login
+from .bsgamesdk import login, captch
 from asyncio import sleep
 from re import search
 from datetime import datetime
@@ -219,9 +219,45 @@ class pcrclient:
             'channel': str(self.channel),
             'platform': str(self.platform)
         })
-        if 'is_risk' in lres and lres['is_risk'] == 1:
-            self.shouldLoginB = True
-            return
+
+        retry_times = 0
+        while retry_times < 3:
+            retry_times += 1
+            if "is_risk" in lres and lres["is_risk"] == 1:
+                print(f'PCR账号{self.bsdk.account}触发二次验证:{lres}')
+                while True:
+                    try:
+                        cap = await captch()
+                        info = await self.bsdk.captchaVerifier(cap['gt'], cap['challenge'], cap['gt_user_id'])
+                        challenge = info['challenge']
+                        validate = info['validate']
+                        if validate:
+                            lres = await self.callapi(
+                                "/tool/sdk_login",
+                                {
+                                    "uid": str(self.uid),
+                                    "access_key": self.access_key,
+                                    "channel": str(self.channel),
+                                    "platform": str(self.platform),
+                                    'challenge': challenge,
+                                    'validate': validate,
+                                    'seccode': validate + "|jordan",
+                                    'captcha_type': '1',
+                                    'image_token': '',
+                                    'captcha_code': '',
+                                },
+                            )
+                            print(f'PCR账号{self.bsdk.account}二次验证结果:{lres}')
+                            break
+                        else:
+                            pass
+                    except:
+                        self.shouldLoginB = True
+                        await self.bililogin()
+            else:
+                break
+        else:
+            raise Exception("验证码错误")
 
         gamestart = await self.callapi('/check/game_start', {
             'apptype': 0,

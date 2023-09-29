@@ -108,7 +108,7 @@ class Login:
         while auto_flag:
             self.captcha_cnt += 1
             try:
-                print(f'客户端{self.no}测试新版自动过码中，当前尝试第{self.captcha_cnt}次。')
+                print(f'客户端{self.no}新版自动过码中，当前尝试第{self.captcha_cnt}/3次。')
                 gt = args[0]
                 challenge = args[1]
                 userid = args[2]
