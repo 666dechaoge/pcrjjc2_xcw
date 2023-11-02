@@ -1,6 +1,6 @@
 # pcrjjc2_xcw
 
-基于[pcrjjc2](https://github.com/cc004/pcrjjc2)公版，参考[pcrjjc_huannai](https://github.com/SonderXiaoming/pcrjjc_huannai/)魔改，未经大量测试，如有问题请换回公版
+基于[pcrjjc2](https://github.com/cc004/pcrjjc2)公版，参考[pcrjjc_huannai](https://github.com/SonderXiaoming/pcrjjc_huannai/)魔改，适配2022/05/08之后使用async chara icon的Hoshino版本，未经大量测试，如有问题请换回公版
 
 ## 魔改特点
 
