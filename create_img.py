@@ -69,7 +69,7 @@ def get_im_frame(rank):
     return im_frame
 
 
-def _generate_info_pic_internal(data):
+async def generate_info_pic(data):
     '''
     个人资料卡生成
     '''
@@ -80,9 +80,7 @@ def _generate_info_pic_internal(data):
         id_favorite = int(str(data['favorite_unit']['id'])[0:4])  # 截取第1位到第4位的字符
     except:
         id_favorite = 1000  # 一个？角色
-    pic_dir = chara.fromid(id_favorite).icon.path
-    user_avatar = Image.open(pic_dir).convert("RGBA")
-    user_avatar = user_avatar.resize((90, 90))
+    user_avatar = await chara.fromid(id_favorite).render_icon(90)
     im.paste(user_avatar, (44, 150), mask=user_avatar)
     im_frame = im_frame.resize((100, 100))
     im.paste(im=im_frame, box=(39, 145), mask=im_frame)
@@ -204,16 +202,14 @@ def _generate_info_pic_internal(data):
     return im
 
 
-def _friend_support_position(fr_data, im, fnt, rgb, im_frame, bbox):
+async def _friend_support_position(fr_data, im, fnt, rgb, im_frame, bbox):
     '''
     好友支援位
     '''
     # 合成头像
     im_yuansu = Image.open(f'{path}/img/yuansu.png').convert("RGBA")  # 一个支援ui模板
     id_friend_support = int(str(fr_data['unit_data']['id'])[0:4])
-    pic_dir = chara.fromid(id_friend_support).icon.path
-    avatar = Image.open(pic_dir).convert("RGBA")
-    avatar = avatar.resize((115, 115))
+    avatar = await chara.fromid(id_friend_support).render_icon(115)
     im_yuansu.paste(im=avatar, box=(28, 78), mask=avatar)
     im_frame = im_frame.resize((128, 128))
     im_yuansu.paste(im=im_frame, box=(22, 72), mask=im_frame)
@@ -231,16 +227,14 @@ def _friend_support_position(fr_data, im, fnt, rgb, im_frame, bbox):
     return im
 
 
-def _clan_support_position(clan_data, im, fnt, rgb, im_frame, bbox):
+async def _clan_support_position(clan_data, im, fnt, rgb, im_frame, bbox):
     '''
     地下城及战队支援位
     '''
     # 合成头像
     im_yuansu = Image.open(f'{path}/img/yuansu.png').convert("RGBA")  # 一个支援ui模板
     id_clan_support = int(str(clan_data['unit_data']['id'])[0:4])
-    pic_dir = chara.fromid(id_clan_support).icon.path
-    avatar = Image.open(pic_dir).convert("RGBA")
-    avatar = avatar.resize((115, 115))
+    avatar = await chara.fromid(id_clan_support).render_icon(115)
     im_yuansu.paste(im=avatar, box=(28, 78), mask=avatar)
     im_frame = im_frame.resize((128, 128))
     im_yuansu.paste(im=im_frame, box=(22, 72), mask=im_frame)
@@ -258,7 +252,7 @@ def _clan_support_position(clan_data, im, fnt, rgb, im_frame, bbox):
     return im
 
 
-def _generate_support_pic_internal(data):
+async def generate_support_pic(data):
     '''
     支援界面图片合成
     '''
@@ -273,41 +267,34 @@ def _generate_support_pic_internal(data):
             bbox = (1284, 156)
             rank = fr_data['unit_data']['promotion_level']  # rank获取
             im_frame = get_im_frame(rank)
-            im = _friend_support_position(fr_data, im, fnt, rgb, im_frame, bbox)
+            im = await _friend_support_position(fr_data, im, fnt, rgb, im_frame, bbox)
         elif fr_data['position'] == 2:  # 好友支援位2
             bbox = (1284, 459)
             rank = fr_data['unit_data']['promotion_level']  # rank获取
             im_frame = get_im_frame(rank)
-            im = _friend_support_position(fr_data, im, fnt, rgb, im_frame, bbox)
+            im = await _friend_support_position(fr_data, im, fnt, rgb, im_frame, bbox)
 
     for clan_data in data['clan_support_units']:
         if clan_data['position'] == 1:  # 地下城位置1
             bbox = (43, 156)
             rank = clan_data['unit_data']['promotion_level']  # rank获取
             im_frame = get_im_frame(rank)
-            im = _clan_support_position(clan_data, im, fnt, rgb, im_frame, bbox)
+            im = await _clan_support_position(clan_data, im, fnt, rgb, im_frame, bbox)
         elif clan_data['position'] == 2:  # 地下城位置2
             bbox = (43, 459)
             rank = clan_data['unit_data']['promotion_level']  # rank获取
             im_frame = get_im_frame(rank)
-            im = _clan_support_position(clan_data, im, fnt, rgb, im_frame, bbox)
+            im = await _clan_support_position(clan_data, im, fnt, rgb, im_frame, bbox)
         elif clan_data['position'] == 3:  # 战队位置1
             bbox = (665, 156)
             rank = clan_data['unit_data']['promotion_level']  # rank获取
             im_frame = get_im_frame(rank)
-            im = _clan_support_position(clan_data, im, fnt, rgb, im_frame, bbox)
+            im = await _clan_support_position(clan_data, im, fnt, rgb, im_frame, bbox)
         elif clan_data['position'] == 4:  # 战队位置2
             bbox = (665, 459)
             rank = clan_data['unit_data']['promotion_level']  # rank获取
             im_frame = get_im_frame(rank)
-            im = _clan_support_position(clan_data, im, fnt, rgb, im_frame, bbox)
+            im = await _clan_support_position(clan_data, im, fnt, rgb, im_frame, bbox)
 
     return im
 
-
-async def generate_support_pic(*args, **kwargs):
-    return await run_sync_func(_generate_support_pic_internal, *args, **kwargs)
-
-
-async def generate_info_pic(*args, **kwargs):
-    return await run_sync_func(_generate_info_pic_internal, *args, **kwargs)

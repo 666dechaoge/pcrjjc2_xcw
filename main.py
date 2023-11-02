@@ -2,6 +2,7 @@ import datetime
 from copy import deepcopy
 from itertools import groupby
 from operator import itemgetter
+import traceback
 
 from hoshino.typing import CQHttpError
 from hoshino.typing import NoticeSession, MessageSegment
@@ -167,16 +168,16 @@ async def query_rank(res_all, no, game_id, user_id, ev, n):
                         f'竞技场排名：{res["arena_rank"]}\n'
                         f'公主竞技场排名：{res["grand_arena_rank"]}')
     except Exception as e:
-        await send_to_sender(ev, f'查询{game_id}出错{e}')
+        await send_to_sender(ev, f'查询{game_id}出错：{e}')
     msg = ''.join(msg_list)
     await send_to_sender(ev, msg)
     return
 
 
-@sv.on_rex(r'^详细竞技场查询 ?(\d{1,15})?$')
+@sv.on_rex(r'^(详细竞技场查询|详细查询) ?(\d{1,15})?$')
 async def on_query_arena_id(bot, ev):
     robj = ev['match']
-    game_id = robj.group(1)
+    game_id = robj.group(2)
     if get_avail():
         if not game_id:
             await bot.finish(ev, '请在指令后跟13位游戏id', at_sender=True)
@@ -204,9 +205,11 @@ async def query_info(allres, no, ev):
         try:
             await send_to_sender(ev, f"\n{str(result_image)}\n{result_support}")
         except Exception as e:
-            sv.logger.error(f"发送出错{e}")
+            sv.logger.error(f"发送出错：{e}")
     except Exception as e:
-        await send_to_sender(ev, f'查询出错{e}')
+        exception_str = traceback.format_exc()
+        print(exception_str)
+        await send_to_sender(ev, f'查询出错：{e}')
 
 
 # 单个订阅删除方法
@@ -418,7 +421,7 @@ async def delete_arena_sub(bot, ev):
 
 
 # 竞技场订阅调整
-@sv.on_rex(r'^(启用|开启|停止|禁用|关闭)(公主)?竞技场订阅$')
+@sv.on_rex(r'^(启用|开启|停止|禁用|关闭)(公主)?竞技场(订阅|推送)$')
 async def switch_arena(bot, ev):
     flag, game_id = await get_setting_gameid(bot, ev)
     if not flag:
@@ -1034,10 +1037,10 @@ async def sleep_clean(resall, info, limit_rank, session):
             user_name = await get_user_name(user_id, group_id)
             group_name = await get_group_name(group_id)
             sv.logger.error(
-                f'群:{group_id} {group_name}的{user_id} {user_name}竞技场清理推送错误{c}')
-            await send_to_admin(f'{group_id} {group_name}的{user_id} {user_name}竞技场清理推送错误{c}')
+                f'群:{group_id} {group_name}的{user_id} {user_name}竞技场清理推送错误：{c}')
+            await send_to_admin(f'{group_id} {group_name}的{user_id} {user_name}竞技场清理推送错误：{c}')
         except Exception as e:
-            sv.logger.critical(f'向管理员进行竞技场清理错误报告时发生错误{e}')
+            sv.logger.critical(f'向管理员进行竞技场清理错误报告时发生错误：{e}')
     except Exception as e:
         sv.logger.error(f'对{info["id"]}的检查出错:{e}')
 
